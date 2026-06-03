@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sample-artisan"
+version = "0.1.0"
+description = "A small starter Python project for sample_artisan."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Mario Chacon" }
+]
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0"
+]
+
+[project.scripts]
+sample-artisan = "sample_artisan.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
