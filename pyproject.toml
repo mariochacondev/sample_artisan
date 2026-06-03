@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sample-artisan"
 version = "0.1.0"
-description = "A small starter Python project for sample_artisan."
+description = "An audio sample generator with a waveform interface."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 sample-artisan = "sample_artisan.cli:main"
+sample-artisan-ui = "sample_artisan.web:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
