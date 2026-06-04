@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sample_artisan.ai import plan_sample_from_prompt
 from sample_artisan import generate_wave_sample
+from sample_artisan.synth import render_patch
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +27,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["sine", "square", "saw", "triangle"],
         default="sine",
         help="Waveform shape to generate.",
+    )
+    parser.add_argument(
+        "--engine",
+        choices=["tone", "kick", "snare", "closed_hat", "open_hat", "noise"],
+        default="tone",
+        help="Synthesis engine to use.",
     )
     parser.add_argument(
         "--frequency",
@@ -52,13 +59,15 @@ def main() -> None:
     args = build_parser().parse_args()
     if args.prompt:
         plan = plan_sample_from_prompt(args.prompt)
-        args.waveform = plan.waveform
-        args.frequency = plan.frequency
-        args.duration = plan.duration
-        args.amplitude = plan.amplitude
+        sample = render_patch(plan)
+        output_path = Path(args.output)
+        output_path.write_bytes(sample)
         print(plan.description)
+        print(f"Wrote {output_path}")
+        return
 
     sample = generate_wave_sample(
+        engine=args.engine,
         waveform=args.waveform,
         frequency=args.frequency,
         duration=args.duration,
