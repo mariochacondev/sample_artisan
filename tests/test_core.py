@@ -1,7 +1,7 @@
 import pytest
 
 from sample_artisan import generate_wave_sample
-from sample_artisan.ai import _parse_plan
+from sample_artisan.ai import _parse_plan, plan_sample_locally
 from sample_artisan.cli import build_parser
 
 
@@ -36,3 +36,11 @@ def test_parse_ai_sample_plan() -> None:
     assert plan.frequency == 110
     assert plan.duration == 0.4
     assert plan.amplitude == 0.8
+
+
+def test_local_ai_planner_maps_prompt_to_bass_hit() -> None:
+    plan = plan_sample_locally("short low gritty bass hit")
+
+    assert plan.waveform in {"square", "saw"}
+    assert plan.frequency <= 120
+    assert plan.duration <= 0.5
