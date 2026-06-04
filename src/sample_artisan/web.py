@@ -16,7 +16,7 @@ PORT = 8000
 
 def run(host: str = HOST, port: int = PORT) -> None:
     server = ThreadingHTTPServer((host, port), SampleArtisanHandler)
-    print(f"Audio Sample Generator running at http://{host}:{port}")
+    print(f"sample_artisan UI running at http://{host}:{port}")
     server.serve_forever()
 
 
@@ -50,10 +50,22 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
         params = parse_qs(query)
         try:
             sample = generate_wave_sample(
+                engine=params.get("engine", ["tone"])[0],
                 frequency=_float_param(params, "frequency", 440.0),
                 duration=_float_param(params, "duration", 1.0),
                 waveform=params.get("waveform", ["sine"])[0],
                 amplitude=_float_param(params, "amplitude", 0.65),
+                attack=_float_param(params, "attack", 0.005),
+                decay=_float_param(params, "decay", 0.25),
+                sustain=_float_param(params, "sustain", 0.0),
+                release=_float_param(params, "release", 0.08),
+                noise_mix=_float_param(params, "noise_mix", 0.0),
+                filter_cutoff=_float_param(params, "filter_cutoff", 12_000.0),
+                filter_mode=params.get("filter_mode", ["lowpass"])[0],
+                drive=_float_param(params, "drive", 0.0),
+                pitch_drop=_float_param(params, "pitch_drop", 0.0),
+                metallic=_float_param(params, "metallic", 0.0),
+                bit_depth=int(_float_param(params, "bit_depth", 16)),
             )
         except ValueError as error:
             self.send_error(HTTPStatus.BAD_REQUEST, str(error))
@@ -108,14 +120,16 @@ INDEX_HTML = """<!doctype html>
       --accent-strong: #225f53;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
       min-height: 100svh;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
-      background: #fff;
+      background: #ffffff;
     }
 
     main {
@@ -151,7 +165,8 @@ INDEX_HTML = """<!doctype html>
       line-height: 1.5;
     }
 
-    label {
+    label,
+    legend {
       display: block;
       margin: 22px 0 8px;
       color: #30343a;
@@ -164,24 +179,26 @@ INDEX_HTML = """<!doctype html>
       accent-color: var(--accent);
     }
 
-    select,
-    textarea {
+    select {
       width: 100%;
+      height: 40px;
       border: 1px solid var(--line);
       border-radius: 6px;
       background: #fff;
       color: var(--ink);
+      padding: 0 10px;
       font: inherit;
     }
 
-    select {
-      height: 40px;
-      padding: 0 10px;
-    }
-
     textarea {
+      width: 100%;
       resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
       padding: 10px;
+      font: inherit;
       line-height: 1.4;
     }
 
@@ -240,15 +257,24 @@ INDEX_HTML = """<!doctype html>
       min-height: 280px;
     }
 
-    audio { width: 100%; }
+    audio {
+      width: 100%;
+    }
 
     @media (max-width: 780px) {
-      main { grid-template-columns: 1fr; }
+      main {
+        grid-template-columns: 1fr;
+      }
+
       aside {
         border-right: 0;
         border-bottom: 1px solid var(--line);
       }
-      .workspace { padding: 24px; }
+
+      .workspace {
+        padding: 24px;
+      }
+
       .topline {
         align-items: start;
         flex-direction: column;
@@ -263,8 +289,18 @@ INDEX_HTML = """<!doctype html>
       <p>Generate a sample and inspect the waveform from the rendered audio.</p>
 
       <label for="prompt">AI prompt</label>
-      <textarea id="prompt" rows="4" placeholder="short glassy pluck, low gritty bass hit"></textarea>
+      <textarea id="prompt" rows="4" placeholder="closed hi-hat, punchy kick, noisy snare, gritty bass"></textarea>
       <button id="promptButton">Use AI prompt</button>
+
+      <label for="engine">Engine</label>
+      <select id="engine">
+        <option value="tone">Tone</option>
+        <option value="kick">Kick</option>
+        <option value="snare">Snare</option>
+        <option value="closed_hat">Closed hat</option>
+        <option value="open_hat">Open hat</option>
+        <option value="noise">Noise</option>
+      </select>
 
       <label for="waveform">Waveform</label>
       <select id="waveform">
@@ -282,6 +318,36 @@ INDEX_HTML = """<!doctype html>
 
       <label for="amplitude">Amplitude <span class="value" id="amplitudeValue">65%</span></label>
       <input id="amplitude" type="range" min="0.1" max="1" step="0.01" value="0.65">
+
+      <label for="attack">Attack <span class="value" id="attackValue">0.005 s</span></label>
+      <input id="attack" type="range" min="0" max="0.5" step="0.001" value="0.005">
+
+      <label for="decay">Decay <span class="value" id="decayValue">0.25 s</span></label>
+      <input id="decay" type="range" min="0.01" max="2" step="0.01" value="0.25">
+
+      <label for="noiseMix">Noise <span class="value" id="noiseMixValue">0%</span></label>
+      <input id="noiseMix" type="range" min="0" max="1" step="0.01" value="0">
+
+      <label for="filterCutoff">Filter <span class="value" id="filterCutoffValue">12000 Hz</span></label>
+      <input id="filterCutoff" type="range" min="80" max="18000" step="10" value="12000">
+
+      <label for="filterMode">Filter mode</label>
+      <select id="filterMode">
+        <option value="lowpass">Lowpass</option>
+        <option value="highpass">Highpass</option>
+      </select>
+
+      <label for="drive">Drive <span class="value" id="driveValue">0%</span></label>
+      <input id="drive" type="range" min="0" max="1" step="0.01" value="0">
+
+      <label for="pitchDrop">Pitch drop <span class="value" id="pitchDropValue">0%</span></label>
+      <input id="pitchDrop" type="range" min="0" max="4" step="0.01" value="0">
+
+      <label for="metallic">Metallic <span class="value" id="metallicValue">0%</span></label>
+      <input id="metallic" type="range" min="0" max="1" step="0.01" value="0">
+
+      <label for="bitDepth">Bit depth <span class="value" id="bitDepthValue">16 bit</span></label>
+      <input id="bitDepth" type="range" min="4" max="16" step="1" value="16">
 
       <button id="generate">Generate sample</button>
     </aside>
@@ -306,10 +372,20 @@ INDEX_HTML = """<!doctype html>
 
   <script>
     const controls = {
+      engine: document.getElementById("engine"),
       waveform: document.getElementById("waveform"),
       frequency: document.getElementById("frequency"),
       duration: document.getElementById("duration"),
-      amplitude: document.getElementById("amplitude")
+      amplitude: document.getElementById("amplitude"),
+      attack: document.getElementById("attack"),
+      decay: document.getElementById("decay"),
+      noiseMix: document.getElementById("noiseMix"),
+      filterCutoff: document.getElementById("filterCutoff"),
+      filterMode: document.getElementById("filterMode"),
+      drive: document.getElementById("drive"),
+      pitchDrop: document.getElementById("pitchDrop"),
+      metallic: document.getElementById("metallic"),
+      bitDepth: document.getElementById("bitDepth")
     };
 
     const promptInput = document.getElementById("prompt");
@@ -318,7 +394,15 @@ INDEX_HTML = """<!doctype html>
     const labels = {
       frequency: document.getElementById("frequencyValue"),
       duration: document.getElementById("durationValue"),
-      amplitude: document.getElementById("amplitudeValue")
+      amplitude: document.getElementById("amplitudeValue"),
+      attack: document.getElementById("attackValue"),
+      decay: document.getElementById("decayValue"),
+      noiseMix: document.getElementById("noiseMixValue"),
+      filterCutoff: document.getElementById("filterCutoffValue"),
+      drive: document.getElementById("driveValue"),
+      pitchDrop: document.getElementById("pitchDropValue"),
+      metallic: document.getElementById("metallicValue"),
+      bitDepth: document.getElementById("bitDepthValue")
     };
 
     const audio = document.getElementById("audio");
@@ -333,14 +417,34 @@ INDEX_HTML = """<!doctype html>
       labels.frequency.textContent = `${controls.frequency.value} Hz`;
       labels.duration.textContent = `${Number(controls.duration.value).toFixed(1)} s`;
       labels.amplitude.textContent = `${Math.round(Number(controls.amplitude.value) * 100)}%`;
+      labels.attack.textContent = `${Number(controls.attack.value).toFixed(3)} s`;
+      labels.decay.textContent = `${Number(controls.decay.value).toFixed(2)} s`;
+      labels.noiseMix.textContent = `${Math.round(Number(controls.noiseMix.value) * 100)}%`;
+      labels.filterCutoff.textContent = `${controls.filterCutoff.value} Hz`;
+      labels.drive.textContent = `${Math.round(Number(controls.drive.value) * 100)}%`;
+      labels.pitchDrop.textContent = `${Math.round(Number(controls.pitchDrop.value) * 100)}%`;
+      labels.metallic.textContent = `${Math.round(Number(controls.metallic.value) * 100)}%`;
+      labels.bitDepth.textContent = `${controls.bitDepth.value} bit`;
     }
 
     function buildUrl() {
       const params = new URLSearchParams({
+        engine: controls.engine.value,
         waveform: controls.waveform.value,
         frequency: controls.frequency.value,
         duration: controls.duration.value,
-        amplitude: controls.amplitude.value
+        amplitude: controls.amplitude.value,
+        attack: controls.attack.value,
+        decay: controls.decay.value,
+        sustain: 0,
+        release: 0.08,
+        noise_mix: controls.noiseMix.value,
+        filter_cutoff: controls.filterCutoff.value,
+        filter_mode: controls.filterMode.value,
+        drive: controls.drive.value,
+        pitch_drop: controls.pitchDrop.value,
+        metallic: controls.metallic.value,
+        bit_depth: controls.bitDepth.value
       });
       return `/api/sample.wav?${params.toString()}`;
     }
@@ -373,10 +477,20 @@ INDEX_HTML = """<!doctype html>
           throw new Error(await response.text());
         }
         const plan = await response.json();
+        controls.engine.value = plan.engine;
         controls.waveform.value = plan.waveform;
         controls.frequency.value = Math.round(plan.frequency);
         controls.duration.value = Number(plan.duration).toFixed(1);
         controls.amplitude.value = Number(plan.amplitude).toFixed(2);
+        controls.attack.value = Number(plan.attack).toFixed(3);
+        controls.decay.value = Number(plan.decay).toFixed(2);
+        controls.noiseMix.value = Number(plan.noise_mix).toFixed(2);
+        controls.filterCutoff.value = Math.round(plan.filter_cutoff);
+        controls.filterMode.value = plan.filter_mode;
+        controls.drive.value = Number(plan.drive).toFixed(2);
+        controls.pitchDrop.value = Number(plan.pitch_drop).toFixed(2);
+        controls.metallic.value = Number(plan.metallic).toFixed(2);
+        controls.bitDepth.value = plan.bit_depth;
         status.textContent = plan.description;
         await generate();
       } catch (error) {
