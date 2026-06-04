@@ -314,7 +314,7 @@ INDEX_HTML = """<!doctype html>
       <input id="frequency" type="range" min="80" max="1200" value="440">
 
       <label for="duration">Duration <span class="value" id="durationValue">1.0 s</span></label>
-      <input id="duration" type="range" min="0.1" max="3" step="0.1" value="1">
+      <input id="duration" type="range" min="0.03" max="3" step="0.01" value="1">
 
       <label for="amplitude">Amplitude <span class="value" id="amplitudeValue">65%</span></label>
       <input id="amplitude" type="range" min="0.1" max="1" step="0.01" value="0.65">
@@ -415,7 +415,7 @@ INDEX_HTML = """<!doctype html>
 
     function updateLabels() {
       labels.frequency.textContent = `${controls.frequency.value} Hz`;
-      labels.duration.textContent = `${Number(controls.duration.value).toFixed(1)} s`;
+      labels.duration.textContent = `${Number(controls.duration.value).toFixed(2)} s`;
       labels.amplitude.textContent = `${Math.round(Number(controls.amplitude.value) * 100)}%`;
       labels.attack.textContent = `${Number(controls.attack.value).toFixed(3)} s`;
       labels.decay.textContent = `${Number(controls.decay.value).toFixed(2)} s`;
@@ -480,7 +480,7 @@ INDEX_HTML = """<!doctype html>
         controls.engine.value = plan.engine;
         controls.waveform.value = plan.waveform;
         controls.frequency.value = Math.round(plan.frequency);
-        controls.duration.value = Number(plan.duration).toFixed(1);
+        controls.duration.value = Number(plan.duration).toFixed(2);
         controls.amplitude.value = Number(plan.amplitude).toFixed(2);
         controls.attack.value = Number(plan.attack).toFixed(3);
         controls.decay.value = Number(plan.decay).toFixed(2);
