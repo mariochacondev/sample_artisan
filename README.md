@@ -1,6 +1,6 @@
 # sample_artisan
 
-`sample_artisan` is an audio sample generator. It can write WAV samples from the command line and includes a browser interface for shaping a sample while viewing its waveform.
+`sample_artisan` is an audio sample generator and sound-design tool. It can write WAV samples from the command line and includes a browser interface for shaping a sample while viewing its waveform.
 
 ## Project layout
 
@@ -34,10 +34,11 @@ python -m pip install -e ".[dev]"
 sample-artisan sample.wav --waveform sine --frequency 440 --duration 1.5
 ```
 
-You can also ask the free local AI planner to choose the parameters:
+You can also ask the free local planner, or Ollama when it is running, to choose a full synth patch:
 
 ```bash
 sample-artisan sample.wav --prompt "short low gritty bass hit"
+sample-artisan hat.wav --prompt "closed hihat"
 ```
 
 ## Run the waveform interface
@@ -52,14 +53,29 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-The interface generates a WAV sample and draws the waveform from the decoded audio. You can change waveform, frequency, duration, and amplitude, then play the result in the browser. The AI prompt box works locally without an API key.
+The interface generates a WAV sample and draws the waveform from the decoded audio. You can change engine, waveform, frequency, duration, amplitude, envelope, noise, filter, drive, pitch drop, metallic tone, and bit depth, then play the result in the browser.
 
-Optional: if you want to use OpenAI instead of the free local planner, install the AI extra and set `OPENAI_API_KEY`:
+## Ollama prompt mode
+
+The prompt box uses Ollama first when it is available at `http://127.0.0.1:11434`. If Ollama is not running, the app falls back to built-in local rules.
+
+Install Ollama, pull a model, then start the interface:
 
 ```bash
-python -m pip install -e ".[ai]"
-export OPENAI_API_KEY="your-api-key"
+ollama pull llama3.2
 sample-artisan-ui
+```
+
+You can choose another Ollama model with:
+
+```bash
+export OLLAMA_MODEL="qwen2.5"
+```
+
+To force the built-in local rules even when Ollama is running:
+
+```bash
+export SAMPLE_ARTISAN_AI="local"
 ```
 
 ## Test
