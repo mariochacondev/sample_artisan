@@ -5,14 +5,16 @@ build-backend = "hatchling.build"
 [project]
 name = "sample-artisan"
 version = "0.1.0"
-description = "An audio sample generator with a waveform interface."
+description = "An audio sample generator with an AI prompt interface."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
   { name = "Mario Chacon" }
 ]
 license = { text = "MIT" }
-dependencies = []
+dependencies = [
+  "openai>=2.0.0"
+]
 
 [project.optional-dependencies]
 dev = [
