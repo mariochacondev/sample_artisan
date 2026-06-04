@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from sample_artisan.ai import plan_sample_from_prompt
 from sample_artisan.synth import generate_wave_sample
 
 HOST = "127.0.0.1"
@@ -26,6 +28,9 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
             return
         if route.path == "/api/sample.wav":
             self._send_sample(route.query)
+            return
+        if route.path == "/api/prompt":
+            self._send_prompt_plan(route.query)
             return
 
         self.send_error(HTTPStatus.NOT_FOUND)
@@ -59,6 +64,22 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(sample)))
         self.end_headers()
         self.wfile.write(sample)
+
+    def _send_prompt_plan(self, query: str) -> None:
+        params = parse_qs(query)
+        prompt = params.get("prompt", [""])[0]
+        try:
+            plan = plan_sample_from_prompt(prompt)
+        except (RuntimeError, ValueError) as error:
+            self.send_error(HTTPStatus.BAD_REQUEST, str(error))
+            return
+
+        payload = json.dumps(plan.__dict__).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
 
 def _float_param(params: dict[str, list[str]], key: str, default: float) -> float:
@@ -143,15 +164,25 @@ INDEX_HTML = """<!doctype html>
       accent-color: var(--accent);
     }
 
-    select {
+    select,
+    textarea {
       width: 100%;
-      height: 40px;
       border: 1px solid var(--line);
       border-radius: 6px;
       background: #fff;
       color: var(--ink);
-      padding: 0 10px;
       font: inherit;
+    }
+
+    select {
+      height: 40px;
+      padding: 0 10px;
+    }
+
+    textarea {
+      resize: vertical;
+      padding: 10px;
+      line-height: 1.4;
     }
 
     button {
@@ -231,6 +262,10 @@ INDEX_HTML = """<!doctype html>
       <h1>Audio Sample Generator</h1>
       <p>Generate a sample and inspect the waveform from the rendered audio.</p>
 
+      <label for="prompt">AI prompt</label>
+      <textarea id="prompt" rows="4" placeholder="short glassy pluck, low gritty bass hit"></textarea>
+      <button id="promptButton">Use AI prompt</button>
+
       <label for="waveform">Waveform</label>
       <select id="waveform">
         <option value="sine">Sine</option>
@@ -277,6 +312,9 @@ INDEX_HTML = """<!doctype html>
       amplitude: document.getElementById("amplitude")
     };
 
+    const promptInput = document.getElementById("prompt");
+    const promptButton = document.getElementById("promptButton");
+
     const labels = {
       frequency: document.getElementById("frequencyValue"),
       duration: document.getElementById("durationValue"),
@@ -319,6 +357,31 @@ INDEX_HTML = """<!doctype html>
       channels.textContent = currentBuffer.numberOfChannels === 1 ? "Mono" : `${currentBuffer.numberOfChannels} channels`;
       status.textContent = `${controls.waveform.value} sample at ${controls.frequency.value} Hz`;
       drawWaveform();
+    }
+
+    async function planFromPrompt() {
+      const prompt = promptInput.value.trim();
+      if (!prompt) {
+        status.textContent = "Enter an AI prompt first";
+        return;
+      }
+
+      status.textContent = "Planning sample with AI";
+      try {
+        const response = await fetch(`/api/prompt?prompt=${encodeURIComponent(prompt)}`);
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const plan = await response.json();
+        controls.waveform.value = plan.waveform;
+        controls.frequency.value = Math.round(plan.frequency);
+        controls.duration.value = Number(plan.duration).toFixed(1);
+        controls.amplitude.value = Number(plan.amplitude).toFixed(2);
+        status.textContent = plan.description;
+        await generate();
+      } catch (error) {
+        status.textContent = "AI prompt failed. Check OPENAI_API_KEY.";
+      }
     }
 
     function drawWaveform() {
@@ -370,6 +433,7 @@ INDEX_HTML = """<!doctype html>
     });
 
     document.getElementById("generate").addEventListener("click", generate);
+    promptButton.addEventListener("click", planFromPrompt);
     window.addEventListener("resize", drawWaveform);
 
     updateLabels();
