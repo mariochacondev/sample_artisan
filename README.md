@@ -34,10 +34,9 @@ python -m pip install -e ".[dev]"
 sample-artisan sample.wav --waveform sine --frequency 440 --duration 1.5
 ```
 
-You can also ask AI to choose the parameters:
+You can also ask the free local AI planner to choose the parameters:
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
 sample-artisan sample.wav --prompt "short low gritty bass hit"
 ```
 
@@ -53,11 +52,12 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-The interface generates a WAV sample and draws the waveform from the decoded audio. You can change waveform, frequency, duration, and amplitude, then play the result in the browser.
+The interface generates a WAV sample and draws the waveform from the decoded audio. You can change waveform, frequency, duration, and amplitude, then play the result in the browser. The AI prompt box works locally without an API key.
 
-To use the AI prompt box, set `OPENAI_API_KEY` before starting the interface:
+Optional: if you want to use OpenAI instead of the free local planner, install the AI extra and set `OPENAI_API_KEY`:
 
 ```bash
+python -m pip install -e ".[ai]"
 export OPENAI_API_KEY="your-api-key"
 sample-artisan-ui
 ```
