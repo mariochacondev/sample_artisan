@@ -12,11 +12,12 @@ authors = [
   { name = "Mario Chacon" }
 ]
 license = { text = "MIT" }
-dependencies = [
-  "openai>=2.0.0"
-]
+dependencies = []
 
 [project.optional-dependencies]
+ai = [
+  "openai>=2.0.0"
+]
 dev = [
   "pytest>=8.0"
 ]
