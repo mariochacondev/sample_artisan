@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from sample_artisan.ai import plan_sample_from_prompt
 from sample_artisan import generate_wave_sample
 
 
@@ -15,6 +16,10 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default="sample.wav",
         help="Path for the generated WAV sample.",
+    )
+    parser.add_argument(
+        "--prompt",
+        help="Use AI to turn a sound-design prompt into sample parameters.",
     )
     parser.add_argument(
         "--waveform",
@@ -45,6 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    if args.prompt:
+        plan = plan_sample_from_prompt(args.prompt)
+        args.waveform = plan.waveform
+        args.frequency = plan.frequency
+        args.duration = plan.duration
+        args.amplitude = plan.amplitude
+        print(plan.description)
+
     sample = generate_wave_sample(
         waveform=args.waveform,
         frequency=args.frequency,
