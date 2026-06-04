@@ -380,7 +380,7 @@ INDEX_HTML = """<!doctype html>
         status.textContent = plan.description;
         await generate();
       } catch (error) {
-        status.textContent = "AI prompt failed. Check OPENAI_API_KEY.";
+        status.textContent = "AI prompt failed. Try a different prompt.";
       }
     }
 
