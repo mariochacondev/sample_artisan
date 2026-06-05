@@ -332,7 +332,7 @@ INDEX_HTML = """<!doctype html>
       <label for="prompt">AI prompt</label>
       <textarea id="prompt" rows="4" placeholder="closed hi-hat, punchy kick, noisy snare, gritty bass"></textarea>
 
-      <label for="engine">Engine</label>
+      <label for="engine">Sound type</label>
       <select id="engine">
         <option value="tone">Tone</option>
         <option value="kick">Kick</option>
