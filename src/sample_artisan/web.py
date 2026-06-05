@@ -290,7 +290,6 @@ INDEX_HTML = """<!doctype html>
 
       <label for="prompt">AI prompt</label>
       <textarea id="prompt" rows="4" placeholder="closed hi-hat, punchy kick, noisy snare, gritty bass"></textarea>
-      <button id="promptButton">Use AI prompt</button>
 
       <label for="engine">Engine</label>
       <select id="engine">
@@ -389,7 +388,6 @@ INDEX_HTML = """<!doctype html>
     };
 
     const promptInput = document.getElementById("prompt");
-    const promptButton = document.getElementById("promptButton");
 
     const labels = {
       frequency: document.getElementById("frequencyValue"),
@@ -449,7 +447,7 @@ INDEX_HTML = """<!doctype html>
       return `/api/sample.wav?${params.toString()}`;
     }
 
-    async function generate() {
+    async function renderFromControls(message = "") {
       updateLabels();
       status.textContent = "Generating";
       const response = await fetch(buildUrl());
@@ -459,17 +457,21 @@ INDEX_HTML = """<!doctype html>
       audio.src = url;
       sampleRate.textContent = `${(currentBuffer.sampleRate / 1000).toFixed(1)} kHz`;
       channels.textContent = currentBuffer.numberOfChannels === 1 ? "Mono" : `${currentBuffer.numberOfChannels} channels`;
-      status.textContent = `${controls.waveform.value} sample at ${controls.frequency.value} Hz`;
+      status.textContent = message || `${controls.engine.value} sample at ${controls.frequency.value} Hz`;
       drawWaveform();
     }
 
-    async function planFromPrompt() {
+    async function generate() {
       const prompt = promptInput.value.trim();
       if (!prompt) {
-        status.textContent = "Enter an AI prompt first";
+        await renderFromControls();
         return;
       }
 
+      await planFromPrompt(prompt);
+    }
+
+    async function planFromPrompt(prompt) {
       status.textContent = "Planning sample with AI";
       try {
         const response = await fetch(`/api/prompt?prompt=${encodeURIComponent(prompt)}`);
@@ -491,8 +493,7 @@ INDEX_HTML = """<!doctype html>
         controls.pitchDrop.value = Number(plan.pitch_drop).toFixed(2);
         controls.metallic.value = Number(plan.metallic).toFixed(2);
         controls.bitDepth.value = plan.bit_depth;
-        status.textContent = plan.description;
-        await generate();
+        await renderFromControls(plan.description);
       } catch (error) {
         status.textContent = "AI prompt failed. Try a different prompt.";
       }
@@ -543,11 +544,9 @@ INDEX_HTML = """<!doctype html>
 
     Object.values(controls).forEach((control) => {
       control.addEventListener("input", updateLabels);
-      control.addEventListener("change", generate);
     });
 
     document.getElementById("generate").addEventListener("click", generate);
-    promptButton.addEventListener("click", planFromPrompt);
     window.addEventListener("resize", drawWaveform);
 
     updateLabels();
