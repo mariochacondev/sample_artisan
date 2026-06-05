@@ -62,14 +62,7 @@ def plan_sample_from_prompt(prompt: str, model: str | None = None) -> SynthPatch
     if not cleaned_prompt:
         raise ValueError("prompt must not be empty")
 
-    provider = os.getenv("SAMPLE_ARTISAN_AI", "ollama").lower()
-    if provider == "local":
-        return plan_sample_locally(cleaned_prompt)
-
-    try:
-        return plan_sample_with_ollama(cleaned_prompt, model=model)
-    except RuntimeError:
-        return plan_sample_locally(cleaned_prompt)
+    return plan_sample_with_ollama(cleaned_prompt, model=model)
 
 
 def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch:
@@ -104,128 +97,6 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
     return _parse_patch(raw.get("response", "{}"))
 
 
-def plan_sample_locally(prompt: str) -> SynthPatch:
-    """Use free local prompt rules to choose a synth patch."""
-    words = prompt.lower()
-    if _has_any(words, "closed hihat", "closed hi-hat", "closed hat", "tight hat"):
-        return SynthPatch(
-            engine="closed_hat",
-            waveform="square",
-            frequency=7_500,
-            duration=0.08,
-            amplitude=0.75,
-            attack=0.001,
-            decay=0.055,
-            sustain=0.0,
-            release=0.015,
-            noise_mix=0.95,
-            filter_cutoff=7_000,
-            filter_mode="highpass",
-            drive=0.25,
-            metallic=0.9,
-            bit_depth=12,
-            description="Local patch: tight metallic closed hi-hat.",
-        )
-    if _has_any(words, "open hihat", "open hi-hat", "open hat"):
-        return SynthPatch(
-            engine="open_hat",
-            waveform="square",
-            frequency=6_500,
-            duration=0.45,
-            amplitude=0.7,
-            attack=0.001,
-            decay=0.32,
-            sustain=0.0,
-            release=0.08,
-            noise_mix=0.9,
-            filter_cutoff=6_000,
-            filter_mode="highpass",
-            drive=0.18,
-            metallic=0.85,
-            bit_depth=12,
-            description="Local patch: airy open hi-hat.",
-        )
-    if _has_any(words, "snare", "rim"):
-        return SynthPatch(
-            engine="snare",
-            waveform="triangle",
-            frequency=190,
-            duration=0.22,
-            amplitude=0.85,
-            attack=0.002,
-            decay=0.16,
-            sustain=0.0,
-            release=0.04,
-            noise_mix=0.72,
-            filter_cutoff=2_400,
-            filter_mode="highpass",
-            drive=0.35,
-            metallic=0.2,
-            bit_depth=14,
-            description="Local patch: crisp noise snare.",
-        )
-    if _has_any(words, "kick", "bd", "bass drum"):
-        return SynthPatch(
-            engine="kick",
-            waveform="sine",
-            frequency=55,
-            duration=0.42,
-            amplitude=0.95,
-            attack=0.001,
-            decay=0.26,
-            sustain=0.0,
-            release=0.08,
-            noise_mix=0.05,
-            filter_cutoff=1_600,
-            filter_mode="lowpass",
-            drive=0.45,
-            pitch_drop=3.0,
-            bit_depth=16,
-            description="Local patch: punchy pitch-drop kick.",
-        )
-
-    return _melodic_patch(words)
-
-
-def _melodic_patch(words: str) -> SynthPatch:
-    waveform = "sine"
-    if _has_any(words, "gritty", "harsh", "distorted", "buzz", "lead"):
-        waveform = "saw"
-    elif _has_any(words, "bass", "8-bit", "chip", "chiptune", "square", "punch"):
-        waveform = "square"
-    elif _has_any(words, "triangle", "mellow", "round", "smooth"):
-        waveform = "triangle"
-
-    frequency = 440.0
-    if _has_any(words, "sub", "deep", "low", "bass"):
-        frequency = 110.0
-    elif _has_any(words, "high", "bright", "sparkle", "glassy", "bell"):
-        frequency = 880.0
-
-    duration = 0.35 if _has_any(words, "short", "stab", "hit", "pluck") else 1.0
-    if _has_any(words, "long", "pad", "drone", "swell", "sustain"):
-        duration = 2.4
-
-    return SynthPatch(
-        engine="tone",
-        waveform=waveform,
-        frequency=frequency,
-        duration=duration,
-        amplitude=0.75 if _has_any(words, "loud", "hard", "punchy") else 0.6,
-        attack=0.002 if _has_any(words, "pluck", "stab", "hit") else 0.03,
-        decay=0.18 if _has_any(words, "pluck", "stab", "hit") else 0.5,
-        sustain=0.0 if _has_any(words, "pluck", "stab", "hit") else 0.35,
-        release=0.08,
-        noise_mix=0.12 if _has_any(words, "air", "breath", "noisy") else 0.0,
-        filter_cutoff=8_000 if _has_any(words, "bright", "glassy") else 4_000,
-        filter_mode="lowpass",
-        drive=0.3 if _has_any(words, "gritty", "distorted", "dirty") else 0.0,
-        metallic=0.35 if _has_any(words, "bell", "metal", "glassy") else 0.0,
-        bit_depth=8 if _has_any(words, "8-bit", "lofi", "chip") else 16,
-        description=f"Local patch: {waveform} {frequency:.0f} Hz tone.",
-    )
-
-
 def _parse_patch(raw_text: str) -> SynthPatch:
     data = json.loads(raw_text)
     patch_data = asdict(SynthPatch())
@@ -249,7 +120,3 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         bit_depth=int(patch_data["bit_depth"]),
         description=patch_data["description"],
     )
-
-
-def _has_any(words: str, *needles: str) -> bool:
-    return any(needle in words for needle in needles)
