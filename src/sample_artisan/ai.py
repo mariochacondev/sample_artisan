@@ -97,7 +97,7 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
     """Ask a local Ollama model to design a synth patch."""
     system = (
         "You are designing one-shot synthesizer patches for a Python audio tool. "
-        "Return only JSON matching the schema. Think like a Serum/Vital sound "
+        "Return only one JSON object. Think like a Serum/Vital sound "
         "designer building a one-shot patch from oscillators, noise, transient, "
         "filter, pitch envelope, and resonant body. Use broad engines instead "
         "of literal instrument names: conga, bongo, tom, wood block, and hand "
@@ -108,13 +108,19 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "open_hat; cymbal, crash, and ride -> open_hat with metal noise, highpass "
         "filtering, high metallic amount, and longer decay. Never choose snare "
         "for conga, kick, or cymbal. Tune body_frequency "
-        "to the perceived note/body of the sound. Keep description concise."
+        "to the perceived note/body of the sound. Keep description concise. "
+        "Use these keys when possible: engine, waveform, frequency, duration, "
+        "amplitude, attack, decay, sustain, release, noise_mix, filter_cutoff, "
+        "filter_mode, drive, pitch_drop, metallic, bit_depth, osc2_waveform, "
+        "osc2_ratio, osc2_level, noise_type, noise_decay, filter_resonance, "
+        "filter_env, pitch_env, pitch_decay, transient_level, transient_tone, "
+        "body_level, body_frequency, body_decay, description."
     )
     body = {
         "model": model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
         "prompt": f"{system}\n\nSound prompt: {prompt}",
         "stream": False,
-        "format": PATCH_SCHEMA,
+        "format": "json",
         "options": {"temperature": 0.1},
     }
     payload = json.dumps(body).encode("utf-8")
@@ -125,12 +131,19 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         method="POST",
     )
     try:
-        with request.urlopen(req, timeout=15) as response:
+        with request.urlopen(req, timeout=45) as response:
             raw = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        message = detail or str(exc)
+        raise RuntimeError(f"Ollama request failed: {message}") from exc
     except (OSError, error.URLError, json.JSONDecodeError) as exc:
         raise RuntimeError("Ollama is not available") from exc
 
-    return _polish_patch(_parse_patch(raw.get("response", "{}")))
+    response_text = str(raw.get("response", "")).strip()
+    if not response_text:
+        raise RuntimeError("Ollama returned an empty response")
+    return _polish_patch(_parse_patch(response_text))
 
 
 def _parse_patch(raw_text: str) -> SynthPatch:
