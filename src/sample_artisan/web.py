@@ -241,6 +241,19 @@ INDEX_HTML = """<!doctype html>
       transform: none;
     }
 
+    details {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    summary {
+      color: #30343a;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
     .value {
       float: right;
       color: var(--muted);
@@ -357,7 +370,7 @@ INDEX_HTML = """<!doctype html>
       <p>Generate a sample and inspect the waveform from the rendered audio.</p>
 
       <label for="prompt">AI prompt</label>
-      <textarea id="prompt" rows="4" placeholder="closed hi-hat, punchy kick, noisy snare, gritty bass"></textarea>
+      <textarea id="prompt" rows="4" placeholder="closed hi-hat, cymbal, conga, sub kick, gritty bass"></textarea>
 
       <label for="engine">Sound type</label>
       <select id="engine">
@@ -365,7 +378,7 @@ INDEX_HTML = """<!doctype html>
         <option value="kick">Kick</option>
         <option value="snare">Snare</option>
         <option value="closed_hat">Closed hat</option>
-        <option value="open_hat">Open hat</option>
+        <option value="open_hat">Open hat / cymbal</option>
         <option value="noise">Noise</option>
         <option value="percussion">Percussion</option>
         <option value="bass">Bass</option>
@@ -420,6 +433,63 @@ INDEX_HTML = """<!doctype html>
       <label for="bitDepth">Bit depth <span class="value" id="bitDepthValue">16 bit</span></label>
       <input id="bitDepth" type="range" min="4" max="16" step="1" value="16">
 
+      <details open>
+        <summary>Advanced sound design</summary>
+
+        <label for="osc2Waveform">Oscillator 2 waveform</label>
+        <select id="osc2Waveform">
+          <option value="sine">Sine</option>
+          <option value="square">Square</option>
+          <option value="saw">Saw</option>
+          <option value="triangle">Triangle</option>
+        </select>
+
+        <label for="osc2Ratio">Oscillator 2 ratio <span class="value" id="osc2RatioValue">1.00x</span></label>
+        <input id="osc2Ratio" type="range" min="0.25" max="8" step="0.01" value="1">
+
+        <label for="osc2Level">Oscillator 2 level <span class="value" id="osc2LevelValue">0%</span></label>
+        <input id="osc2Level" type="range" min="0" max="1" step="0.01" value="0">
+
+        <label for="noiseType">Noise type</label>
+        <select id="noiseType">
+          <option value="white">White</option>
+          <option value="dark">Dark</option>
+          <option value="bright">Bright</option>
+          <option value="wood">Wood</option>
+          <option value="metal">Metal</option>
+        </select>
+
+        <label for="noiseDecay">Noise decay <span class="value" id="noiseDecayValue">0.08 s</span></label>
+        <input id="noiseDecay" type="range" min="0.005" max="3" step="0.005" value="0.08">
+
+        <label for="filterResonance">Filter resonance <span class="value" id="filterResonanceValue">0%</span></label>
+        <input id="filterResonance" type="range" min="0" max="1" step="0.01" value="0">
+
+        <label for="filterEnv">Filter envelope <span class="value" id="filterEnvValue">0%</span></label>
+        <input id="filterEnv" type="range" min="-1" max="1" step="0.01" value="0">
+
+        <label for="pitchEnv">Pitch envelope <span class="value" id="pitchEnvValue">0 cents</span></label>
+        <input id="pitchEnv" type="range" min="-1200" max="1200" step="1" value="0">
+
+        <label for="pitchDecay">Pitch decay <span class="value" id="pitchDecayValue">0.08 s</span></label>
+        <input id="pitchDecay" type="range" min="0.005" max="2" step="0.005" value="0.08">
+
+        <label for="transientLevel">Transient level <span class="value" id="transientLevelValue">0%</span></label>
+        <input id="transientLevel" type="range" min="0" max="1" step="0.01" value="0">
+
+        <label for="transientTone">Transient tone <span class="value" id="transientToneValue">1500 Hz</span></label>
+        <input id="transientTone" type="range" min="80" max="12000" step="10" value="1500">
+
+        <label for="bodyLevel">Body level <span class="value" id="bodyLevelValue">0%</span></label>
+        <input id="bodyLevel" type="range" min="0" max="1" step="0.01" value="0">
+
+        <label for="bodyFrequency">Body frequency <span class="value" id="bodyFrequencyValue">180 Hz</span></label>
+        <input id="bodyFrequency" type="range" min="35" max="2000" step="1" value="180">
+
+        <label for="bodyDecay">Body decay <span class="value" id="bodyDecayValue">0.35 s</span></label>
+        <input id="bodyDecay" type="range" min="0.02" max="4" step="0.01" value="0.35">
+      </details>
+
       <button id="generate">Generate sample</button>
     </aside>
 
@@ -458,7 +528,21 @@ INDEX_HTML = """<!doctype html>
       drive: document.getElementById("drive"),
       pitchDrop: document.getElementById("pitchDrop"),
       metallic: document.getElementById("metallic"),
-      bitDepth: document.getElementById("bitDepth")
+      bitDepth: document.getElementById("bitDepth"),
+      osc2Waveform: document.getElementById("osc2Waveform"),
+      osc2Ratio: document.getElementById("osc2Ratio"),
+      osc2Level: document.getElementById("osc2Level"),
+      noiseType: document.getElementById("noiseType"),
+      noiseDecay: document.getElementById("noiseDecay"),
+      filterResonance: document.getElementById("filterResonance"),
+      filterEnv: document.getElementById("filterEnv"),
+      pitchEnv: document.getElementById("pitchEnv"),
+      pitchDecay: document.getElementById("pitchDecay"),
+      transientLevel: document.getElementById("transientLevel"),
+      transientTone: document.getElementById("transientTone"),
+      bodyLevel: document.getElementById("bodyLevel"),
+      bodyFrequency: document.getElementById("bodyFrequency"),
+      bodyDecay: document.getElementById("bodyDecay")
     };
 
     const promptInput = document.getElementById("prompt");
@@ -475,7 +559,19 @@ INDEX_HTML = """<!doctype html>
       drive: document.getElementById("driveValue"),
       pitchDrop: document.getElementById("pitchDropValue"),
       metallic: document.getElementById("metallicValue"),
-      bitDepth: document.getElementById("bitDepthValue")
+      bitDepth: document.getElementById("bitDepthValue"),
+      osc2Ratio: document.getElementById("osc2RatioValue"),
+      osc2Level: document.getElementById("osc2LevelValue"),
+      noiseDecay: document.getElementById("noiseDecayValue"),
+      filterResonance: document.getElementById("filterResonanceValue"),
+      filterEnv: document.getElementById("filterEnvValue"),
+      pitchEnv: document.getElementById("pitchEnvValue"),
+      pitchDecay: document.getElementById("pitchDecayValue"),
+      transientLevel: document.getElementById("transientLevelValue"),
+      transientTone: document.getElementById("transientToneValue"),
+      bodyLevel: document.getElementById("bodyLevelValue"),
+      bodyFrequency: document.getElementById("bodyFrequencyValue"),
+      bodyDecay: document.getElementById("bodyDecayValue")
     };
 
     const audio = document.getElementById("audio");
@@ -502,6 +598,18 @@ INDEX_HTML = """<!doctype html>
       labels.pitchDrop.textContent = `${Math.round(Number(controls.pitchDrop.value) * 100)}%`;
       labels.metallic.textContent = `${Math.round(Number(controls.metallic.value) * 100)}%`;
       labels.bitDepth.textContent = `${controls.bitDepth.value} bit`;
+      labels.osc2Ratio.textContent = `${Number(controls.osc2Ratio.value).toFixed(2)}x`;
+      labels.osc2Level.textContent = `${Math.round(Number(controls.osc2Level.value) * 100)}%`;
+      labels.noiseDecay.textContent = `${Number(controls.noiseDecay.value).toFixed(3)} s`;
+      labels.filterResonance.textContent = `${Math.round(Number(controls.filterResonance.value) * 100)}%`;
+      labels.filterEnv.textContent = `${Math.round(Number(controls.filterEnv.value) * 100)}%`;
+      labels.pitchEnv.textContent = `${controls.pitchEnv.value} cents`;
+      labels.pitchDecay.textContent = `${Number(controls.pitchDecay.value).toFixed(3)} s`;
+      labels.transientLevel.textContent = `${Math.round(Number(controls.transientLevel.value) * 100)}%`;
+      labels.transientTone.textContent = `${controls.transientTone.value} Hz`;
+      labels.bodyLevel.textContent = `${Math.round(Number(controls.bodyLevel.value) * 100)}%`;
+      labels.bodyFrequency.textContent = `${controls.bodyFrequency.value} Hz`;
+      labels.bodyDecay.textContent = `${Number(controls.bodyDecay.value).toFixed(2)} s`;
     }
 
     function buildUrl() {
@@ -521,31 +629,22 @@ INDEX_HTML = """<!doctype html>
         drive: controls.drive.value,
         pitch_drop: controls.pitchDrop.value,
         metallic: controls.metallic.value,
-        bit_depth: controls.bitDepth.value
+        bit_depth: controls.bitDepth.value,
+        osc2_waveform: controls.osc2Waveform.value,
+        osc2_ratio: controls.osc2Ratio.value,
+        osc2_level: controls.osc2Level.value,
+        noise_type: controls.noiseType.value,
+        noise_decay: controls.noiseDecay.value,
+        filter_resonance: controls.filterResonance.value,
+        filter_env: controls.filterEnv.value,
+        pitch_env: controls.pitchEnv.value,
+        pitch_decay: controls.pitchDecay.value,
+        transient_level: controls.transientLevel.value,
+        transient_tone: controls.transientTone.value,
+        body_level: controls.bodyLevel.value,
+        body_frequency: controls.bodyFrequency.value,
+        body_decay: controls.bodyDecay.value
       });
-      if (activePlan) {
-        const advancedKeys = [
-          "osc2_waveform",
-          "osc2_ratio",
-          "osc2_level",
-          "noise_type",
-          "noise_decay",
-          "filter_resonance",
-          "filter_env",
-          "pitch_env",
-          "pitch_decay",
-          "transient_level",
-          "transient_tone",
-          "body_level",
-          "body_frequency",
-          "body_decay"
-        ];
-        advancedKeys.forEach((key) => {
-          if (activePlan[key] !== undefined) {
-            params.set(key, activePlan[key]);
-          }
-        });
-      }
       return `/api/sample.wav?${params.toString()}`;
     }
 
@@ -631,6 +730,20 @@ INDEX_HTML = """<!doctype html>
         controls.pitchDrop.value = Number(plan.pitch_drop).toFixed(2);
         controls.metallic.value = Number(plan.metallic).toFixed(2);
         controls.bitDepth.value = plan.bit_depth;
+        controls.osc2Waveform.value = plan.osc2_waveform;
+        controls.osc2Ratio.value = Number(plan.osc2_ratio).toFixed(2);
+        controls.osc2Level.value = Number(plan.osc2_level).toFixed(2);
+        controls.noiseType.value = plan.noise_type;
+        controls.noiseDecay.value = Number(plan.noise_decay).toFixed(3);
+        controls.filterResonance.value = Number(plan.filter_resonance).toFixed(2);
+        controls.filterEnv.value = Number(plan.filter_env).toFixed(2);
+        controls.pitchEnv.value = Math.round(plan.pitch_env);
+        controls.pitchDecay.value = Number(plan.pitch_decay).toFixed(3);
+        controls.transientLevel.value = Number(plan.transient_level).toFixed(2);
+        controls.transientTone.value = Math.round(plan.transient_tone);
+        controls.bodyLevel.value = Number(plan.body_level).toFixed(2);
+        controls.bodyFrequency.value = Math.round(plan.body_frequency);
+        controls.bodyDecay.value = Number(plan.body_decay).toFixed(2);
         showPatchDetails(plan);
         await renderFromControls(plan.description, "Generating sample");
       } catch (error) {
