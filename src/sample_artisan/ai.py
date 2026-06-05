@@ -69,10 +69,16 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
     """Ask a local Ollama model to design a synth patch."""
     system = (
         "You are designing one-shot synthesizer patches for a Python audio tool. "
-        "Return only JSON matching the schema. Prefer engines over generic waves: "
-        "closed hihat -> closed_hat with highpass noise, very short decay, high "
-        "metallic; kick -> kick with low frequency and pitch_drop; snare -> snare "
-        "with noise and short decay; bass -> tone or kick with low frequency."
+        "Return only JSON matching the schema. The engine field is the sound "
+        "type, not the oscillator. Choose exactly one engine from the schema. "
+        "If the user explicitly names a sound type, you must use the matching "
+        "engine: kick or bass drum -> kick; snare, clap, rim, or rimshot -> "
+        "snare; closed hihat, closed hi-hat, closed hat, or tight hat -> "
+        "closed_hat; open hihat, open hi-hat, or open hat -> open_hat. Never "
+        "choose snare for a kick prompt. Kick patches need low frequency, "
+        "short duration, lowpass filtering, and pitch_drop. Snare patches need "
+        "noise and short decay. Hat patches need highpass noise, very short "
+        "decay for closed hats, and high metallic."
     )
     body = {
         "model": model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
