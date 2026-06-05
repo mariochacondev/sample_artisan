@@ -146,3 +146,19 @@ def test_cymbal_ai_plan_is_normalized_to_open_hat() -> None:
     assert polished.filter_mode == "highpass"
     assert polished.noise_mix >= 0.55
     assert polished.metallic >= 0.55
+
+
+def test_ai_plan_falls_back_when_number_fields_are_words() -> None:
+    plan = _parse_patch(
+        '{"engine":"cymbal","waveform":"saw","frequency":"sine",'
+        '"duration":"square","noise_mix":"metal","bit_depth":"triangle",'
+        '"description":"cymbal with bad numeric fields"}'
+    )
+
+    polished = _polish_patch(plan)
+
+    assert polished.engine == "open_hat"
+    assert polished.frequency >= 2500
+    assert polished.duration >= 0.18
+    assert polished.noise_mix >= 0.55
+    assert polished.bit_depth == 16
