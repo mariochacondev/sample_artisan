@@ -34,7 +34,7 @@ python -m pip install -e ".[dev]"
 sample-artisan sample.wav --waveform sine --frequency 440 --duration 1.5
 ```
 
-You can also ask the free local planner, or Ollama when it is running, to choose a full synth patch:
+You can also ask Ollama to choose a full synth patch from a prompt:
 
 ```bash
 sample-artisan sample.wav --prompt "short low gritty bass hit"
@@ -57,7 +57,7 @@ The interface generates a WAV sample and draws the waveform from the decoded aud
 
 ## Ollama prompt mode
 
-The prompt box uses Ollama first when it is available at `http://127.0.0.1:11434`. If Ollama is not running, the app falls back to built-in local rules.
+The prompt box uses Ollama at `http://127.0.0.1:11434`. Prompt mode requires Ollama to be running; if Ollama is unavailable, manual parameter generation still works.
 
 Install Ollama, pull a model, then start the interface:
 
@@ -70,12 +70,6 @@ You can choose another Ollama model with:
 
 ```bash
 export OLLAMA_MODEL="qwen2.5"
-```
-
-To force the built-in local rules even when Ollama is running:
-
-```bash
-export SAMPLE_ARTISAN_AI="local"
 ```
 
 ## Test
