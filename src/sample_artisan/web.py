@@ -66,6 +66,20 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
                 pitch_drop=_float_param(params, "pitch_drop", 0.0),
                 metallic=_float_param(params, "metallic", 0.0),
                 bit_depth=int(_float_param(params, "bit_depth", 16)),
+                osc2_waveform=params.get("osc2_waveform", ["sine"])[0],
+                osc2_ratio=_float_param(params, "osc2_ratio", 1.0),
+                osc2_level=_float_param(params, "osc2_level", 0.0),
+                noise_type=params.get("noise_type", ["white"])[0],
+                noise_decay=_float_param(params, "noise_decay", 0.08),
+                filter_resonance=_float_param(params, "filter_resonance", 0.0),
+                filter_env=_float_param(params, "filter_env", 0.0),
+                pitch_env=_float_param(params, "pitch_env", 0.0),
+                pitch_decay=_float_param(params, "pitch_decay", 0.08),
+                transient_level=_float_param(params, "transient_level", 0.0),
+                transient_tone=_float_param(params, "transient_tone", 1_500.0),
+                body_level=_float_param(params, "body_level", 0.0),
+                body_frequency=_float_param(params, "body_frequency", 180.0),
+                body_decay=_float_param(params, "body_decay", 0.35),
             )
         except ValueError as error:
             self.send_error(HTTPStatus.BAD_REQUEST, str(error))
@@ -302,6 +316,19 @@ INDEX_HTML = """<!doctype html>
       width: 100%;
     }
 
+    .patch-details {
+      margin: 0;
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #ffffff;
+      color: var(--muted);
+      padding: 12px;
+      font: 12px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
     @media (max-width: 780px) {
       main {
         grid-template-columns: 1fr;
@@ -340,6 +367,10 @@ INDEX_HTML = """<!doctype html>
         <option value="closed_hat">Closed hat</option>
         <option value="open_hat">Open hat</option>
         <option value="noise">Noise</option>
+        <option value="percussion">Percussion</option>
+        <option value="bass">Bass</option>
+        <option value="pluck">Pluck</option>
+        <option value="texture">Texture</option>
       </select>
 
       <label for="waveform">Waveform</label>
@@ -407,6 +438,7 @@ INDEX_HTML = """<!doctype html>
         <div class="loader" id="loader">Generating sample</div>
         <canvas id="canvas"></canvas>
       </div>
+      <pre class="patch-details" id="patchDetails">Manual patch</pre>
       <audio id="audio" controls></audio>
     </section>
   </main>
@@ -450,11 +482,13 @@ INDEX_HTML = """<!doctype html>
     const canvas = document.getElementById("canvas");
     const waveformPanel = document.querySelector(".waveform");
     const loader = document.getElementById("loader");
+    const patchDetails = document.getElementById("patchDetails");
     const status = document.getElementById("status");
     const sampleRate = document.getElementById("sampleRate");
     const channels = document.getElementById("channels");
     const context = new AudioContext();
     let currentBuffer = null;
+    let activePlan = null;
 
     function updateLabels() {
       labels.frequency.textContent = `${controls.frequency.value} Hz`;
@@ -489,7 +523,39 @@ INDEX_HTML = """<!doctype html>
         metallic: controls.metallic.value,
         bit_depth: controls.bitDepth.value
       });
+      if (activePlan) {
+        const advancedKeys = [
+          "osc2_waveform",
+          "osc2_ratio",
+          "osc2_level",
+          "noise_type",
+          "noise_decay",
+          "filter_resonance",
+          "filter_env",
+          "pitch_env",
+          "pitch_decay",
+          "transient_level",
+          "transient_tone",
+          "body_level",
+          "body_frequency",
+          "body_decay"
+        ];
+        advancedKeys.forEach((key) => {
+          if (activePlan[key] !== undefined) {
+            params.set(key, activePlan[key]);
+          }
+        });
+      }
       return `/api/sample.wav?${params.toString()}`;
+    }
+
+    function showPatchDetails(plan = null) {
+      if (!plan) {
+        patchDetails.textContent = "Manual patch";
+        return;
+      }
+
+      patchDetails.textContent = JSON.stringify(plan, null, 2);
     }
 
     function setLoading(isLoading, message = "Generating sample") {
@@ -528,6 +594,8 @@ INDEX_HTML = """<!doctype html>
 
       const prompt = promptInput.value.trim();
       if (!prompt) {
+        activePlan = null;
+        showPatchDetails(null);
         try {
           await renderFromControls();
         } catch (error) {
@@ -548,6 +616,7 @@ INDEX_HTML = """<!doctype html>
           throw new Error(await response.text());
         }
         const plan = await response.json();
+        activePlan = plan;
         controls.engine.value = plan.engine;
         controls.waveform.value = plan.waveform;
         controls.frequency.value = Math.round(plan.frequency);
@@ -562,6 +631,7 @@ INDEX_HTML = """<!doctype html>
         controls.pitchDrop.value = Number(plan.pitch_drop).toFixed(2);
         controls.metallic.value = Number(plan.metallic).toFixed(2);
         controls.bitDepth.value = plan.bit_depth;
+        showPatchDetails(plan);
         await renderFromControls(plan.description, "Generating sample");
       } catch (error) {
         status.textContent = "AI prompt failed. Try a different prompt.";
@@ -613,7 +683,11 @@ INDEX_HTML = """<!doctype html>
     }
 
     Object.values(controls).forEach((control) => {
-      control.addEventListener("input", updateLabels);
+      control.addEventListener("input", () => {
+        activePlan = null;
+        showPatchDetails(null);
+        updateLabels();
+      });
     });
 
     document.getElementById("generate").addEventListener("click", generate);
