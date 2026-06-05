@@ -97,11 +97,19 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
         try:
             plan = plan_sample_from_prompt(prompt)
         except (RuntimeError, ValueError) as error:
-            self.send_error(HTTPStatus.BAD_REQUEST, str(error))
+            self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
             return
 
         payload = json.dumps(plan.__dict__).encode("utf-8")
         self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_json_error(self, status: HTTPStatus, message: str) -> None:
+        payload = json.dumps({"error": message}).encode("utf-8")
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -647,172 +655,3 @@ INDEX_HTML = """<!doctype html>
       });
       return `/api/sample.wav?${params.toString()}`;
     }
-
-    function showPatchDetails(plan = null) {
-      if (!plan) {
-        patchDetails.textContent = "Manual patch";
-        return;
-      }
-
-      patchDetails.textContent = JSON.stringify(plan, null, 2);
-    }
-
-    function setLoading(isLoading, message = "Generating sample") {
-      waveformPanel.classList.toggle("is-loading", isLoading);
-      generateButton.disabled = isLoading;
-      generateButton.textContent = isLoading ? "Generating..." : "Generate sample";
-      loader.textContent = message;
-    }
-
-    async function renderFromControls(message = "", loadingMessage = "Generating sample") {
-      updateLabels();
-      status.textContent = "Generating";
-      setLoading(true, loadingMessage);
-      try {
-        const response = await fetch(buildUrl());
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-        const bytes = await response.arrayBuffer();
-        currentBuffer = await context.decodeAudioData(bytes.slice(0));
-        const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
-        audio.src = url;
-        sampleRate.textContent = `${(currentBuffer.sampleRate / 1000).toFixed(1)} kHz`;
-        channels.textContent = currentBuffer.numberOfChannels === 1 ? "Mono" : `${currentBuffer.numberOfChannels} channels`;
-        status.textContent = message || `${controls.engine.value} sample at ${controls.frequency.value} Hz`;
-        drawWaveform();
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    async function generate() {
-      if (generateButton.disabled) {
-        return;
-      }
-
-      const prompt = promptInput.value.trim();
-      if (!prompt) {
-        activePlan = null;
-        showPatchDetails(null);
-        try {
-          await renderFromControls();
-        } catch (error) {
-          status.textContent = "Sample generation failed. Check the parameters.";
-        }
-        return;
-      }
-
-      await planFromPrompt(prompt);
-    }
-
-    async function planFromPrompt(prompt) {
-      status.textContent = "Planning sample with AI";
-      setLoading(true, "Planning with AI");
-      try {
-        const response = await fetch(`/api/prompt?prompt=${encodeURIComponent(prompt)}`);
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-        const plan = await response.json();
-        activePlan = plan;
-        controls.engine.value = plan.engine;
-        controls.waveform.value = plan.waveform;
-        controls.frequency.value = Math.round(plan.frequency);
-        controls.duration.value = Number(plan.duration).toFixed(2);
-        controls.amplitude.value = Number(plan.amplitude).toFixed(2);
-        controls.attack.value = Number(plan.attack).toFixed(3);
-        controls.decay.value = Number(plan.decay).toFixed(2);
-        controls.noiseMix.value = Number(plan.noise_mix).toFixed(2);
-        controls.filterCutoff.value = Math.round(plan.filter_cutoff);
-        controls.filterMode.value = plan.filter_mode;
-        controls.drive.value = Number(plan.drive).toFixed(2);
-        controls.pitchDrop.value = Number(plan.pitch_drop).toFixed(2);
-        controls.metallic.value = Number(plan.metallic).toFixed(2);
-        controls.bitDepth.value = plan.bit_depth;
-        controls.osc2Waveform.value = plan.osc2_waveform;
-        controls.osc2Ratio.value = Number(plan.osc2_ratio).toFixed(2);
-        controls.osc2Level.value = Number(plan.osc2_level).toFixed(2);
-        controls.noiseType.value = plan.noise_type;
-        controls.noiseDecay.value = Number(plan.noise_decay).toFixed(3);
-        controls.filterResonance.value = Number(plan.filter_resonance).toFixed(2);
-        controls.filterEnv.value = Number(plan.filter_env).toFixed(2);
-        controls.pitchEnv.value = Math.round(plan.pitch_env);
-        controls.pitchDecay.value = Number(plan.pitch_decay).toFixed(3);
-        controls.transientLevel.value = Number(plan.transient_level).toFixed(2);
-        controls.transientTone.value = Math.round(plan.transient_tone);
-        controls.bodyLevel.value = Number(plan.body_level).toFixed(2);
-        controls.bodyFrequency.value = Math.round(plan.body_frequency);
-        controls.bodyDecay.value = Number(plan.body_decay).toFixed(2);
-        showPatchDetails(plan);
-        await renderFromControls(plan.description, "Generating sample");
-      } catch (error) {
-        status.textContent = "AI prompt failed. Try a different prompt.";
-        setLoading(false);
-      }
-    }
-
-    function drawWaveform() {
-      if (!currentBuffer) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const scale = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.floor(rect.width * scale));
-      canvas.height = Math.max(1, Math.floor(rect.height * scale));
-
-      const ctx = canvas.getContext("2d");
-      ctx.scale(scale, scale);
-      ctx.clearRect(0, 0, rect.width, rect.height);
-
-      const data = currentBuffer.getChannelData(0);
-      const centerY = rect.height / 2;
-      const samplesPerPixel = Math.max(1, Math.floor(data.length / rect.width));
-
-      ctx.strokeStyle = "#d8dce2";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, centerY);
-      ctx.lineTo(rect.width, centerY);
-      ctx.stroke();
-
-      ctx.strokeStyle = "#2f7d6d";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-
-      for (let x = 0; x < rect.width; x += 1) {
-        const start = x * samplesPerPixel;
-        let min = 1;
-        let max = -1;
-        for (let i = 0; i < samplesPerPixel && start + i < data.length; i += 1) {
-          const value = data[start + i];
-          min = Math.min(min, value);
-          max = Math.max(max, value);
-        }
-        ctx.moveTo(x, centerY + min * centerY * 0.86);
-        ctx.lineTo(x, centerY + max * centerY * 0.86);
-      }
-
-      ctx.stroke();
-    }
-
-    Object.values(controls).forEach((control) => {
-      control.addEventListener("input", () => {
-        activePlan = null;
-        showPatchDetails(null);
-        updateLabels();
-      });
-    });
-
-    document.getElementById("generate").addEventListener("click", generate);
-    window.addEventListener("resize", drawWaveform);
-
-    updateLabels();
-    generate();
-  </script>
-</body>
-</html>
-"""
-
-
-if __name__ == "__main__":
-    main()
