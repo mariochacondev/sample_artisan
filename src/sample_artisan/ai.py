@@ -105,7 +105,9 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "wood noise, and short-to-medium decay; kick or bass drum -> kick; "
         "bass or sub -> bass; pluck, mallet, kalimba -> pluck; ambience, riser, "
         "fx -> texture; snare/clap/rimshot -> snare; hihats -> closed_hat or "
-        "open_hat. Never choose snare for conga or kick. Tune body_frequency "
+        "open_hat; cymbal, crash, and ride -> open_hat with metal noise, highpass "
+        "filtering, high metallic amount, and longer decay. Never choose snare "
+        "for conga, kick, or cymbal. Tune body_frequency "
         "to the perceived note/body of the sound. Keep description concise."
     )
     body = {
@@ -132,9 +134,22 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
 
 
 def _parse_patch(raw_text: str) -> SynthPatch:
-    data = json.loads(raw_text)
+    data = _load_patch_json(raw_text)
     patch_data = asdict(SynthPatch())
     patch_data.update(data)
+    patch_data["engine"] = _normalize_engine(str(patch_data["engine"]))
+    patch_data["waveform"] = _normalize_choice(
+        str(patch_data["waveform"]), WAVEFORMS, "sine"
+    )
+    patch_data["osc2_waveform"] = _normalize_choice(
+        str(patch_data["osc2_waveform"]), WAVEFORMS, "sine"
+    )
+    patch_data["noise_type"] = _normalize_choice(
+        str(patch_data["noise_type"]), NOISE_TYPES, "white"
+    )
+    patch_data["filter_mode"] = _normalize_choice(
+        str(patch_data["filter_mode"]), ("lowpass", "highpass"), "lowpass"
+    )
     return SynthPatch(
         engine=patch_data["engine"],
         waveform=patch_data["waveform"],
@@ -206,7 +221,78 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             body_decay=_clamp(patch.body_decay, 0.12, 1.2),
             metallic=_clamp(patch.metallic, 0.0, 0.2),
         )
+    if patch.engine in {"closed_hat", "open_hat"}:
+        return replace(
+            patch,
+            frequency=_clamp(patch.frequency, 2_500.0, 11_000.0),
+            duration=_clamp(
+                patch.duration,
+                0.04 if patch.engine == "closed_hat" else 0.18,
+                1.8,
+            ),
+            attack=_clamp(patch.attack, 0.0, 0.01),
+            decay=_clamp(
+                patch.decay,
+                0.03 if patch.engine == "closed_hat" else 0.18,
+                1.5,
+            ),
+            sustain=0.0,
+            noise_mix=_clamp(patch.noise_mix, 0.55, 1.0),
+            noise_type="metal",
+            filter_cutoff=_clamp(patch.filter_cutoff, 4_000.0, 14_000.0),
+            filter_mode="highpass",
+            metallic=_clamp(patch.metallic, 0.55, 1.0),
+            body_level=0.0,
+        )
     return patch
+
+
+def _load_patch_json(raw_text: str) -> dict[str, object]:
+    try:
+        loaded = json.loads(raw_text)
+    except json.JSONDecodeError:
+        start = raw_text.find("{")
+        end = raw_text.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        loaded = json.loads(raw_text[start : end + 1])
+    if not isinstance(loaded, dict):
+        raise ValueError("AI response must be a JSON object")
+    return loaded
+
+
+def _normalize_engine(engine: str) -> str:
+    normalized = engine.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "cymbal": "open_hat",
+        "crash": "open_hat",
+        "crash_cymbal": "open_hat",
+        "ride": "open_hat",
+        "ride_cymbal": "open_hat",
+        "hat": "closed_hat",
+        "hi_hat": "closed_hat",
+        "hihat": "closed_hat",
+        "closed_hihat": "closed_hat",
+        "open_hihat": "open_hat",
+        "conga": "percussion",
+        "bongo": "percussion",
+        "tom": "percussion",
+        "wood_block": "percussion",
+        "sub": "bass",
+        "sub_bass": "bass",
+        "mallet": "pluck",
+        "kalimba": "pluck",
+        "pad": "texture",
+        "riser": "texture",
+        "fx": "texture",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in ENGINES else "tone"
+
+
+def _normalize_choice(value: str, choices: tuple[str, ...], default: str) -> str:
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return normalized if normalized in choices else default
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
