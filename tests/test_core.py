@@ -121,3 +121,28 @@ def test_percussion_ai_plan_uses_resonant_body() -> None:
     assert 120 <= polished.body_frequency <= 520
     assert polished.transient_level >= 0.12
     assert sample.startswith(b"RIFF")
+
+
+def test_cymbal_ai_plan_is_normalized_to_open_hat() -> None:
+    plan = _parse_patch(
+        '{"engine":"cymbal","waveform":"saw","frequency":1800,'
+        '"duration":0.05,"amplitude":0.7,"attack":0.03,"decay":0.04,'
+        '"sustain":0.3,"release":0.01,"noise_mix":0.1,'
+        '"filter_cutoff":1200,"filter_mode":"lowpass","drive":0.1,'
+        '"pitch_drop":0,"metallic":0.1,"bit_depth":16,'
+        '"osc2_waveform":"square","osc2_ratio":3,"osc2_level":0.2,'
+        '"noise_type":"white","noise_decay":0.08,'
+        '"filter_resonance":0.1,"filter_env":0,'
+        '"pitch_env":0,"pitch_decay":0.05,'
+        '"transient_level":0.1,"transient_tone":6000,'
+        '"body_level":0.2,"body_frequency":400,"body_decay":0.2,'
+        '"description":"cymbal"}'
+    )
+
+    polished = _polish_patch(plan)
+
+    assert polished.engine == "open_hat"
+    assert polished.noise_type == "metal"
+    assert polished.filter_mode == "highpass"
+    assert polished.noise_mix >= 0.55
+    assert polished.metallic >= 0.55
