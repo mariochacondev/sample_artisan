@@ -134,13 +134,17 @@ def _validate_patch(patch: SynthPatch) -> None:
 def _frequency_at(patch: SynthPatch, progress: float) -> float:
     if patch.pitch_drop <= 0:
         return patch.frequency
+    if patch.engine == "kick":
+        return patch.frequency * (1.0 + (patch.pitch_drop * math.exp(-progress * 18.0)))
     return patch.frequency + (patch.frequency * patch.pitch_drop * (1.0 - progress) ** 2)
 
 
 def _engine_value(patch: SynthPatch, phase: float, t: float, rng: random.Random) -> float:
     match patch.engine:
         case "kick":
-            return math.sin(2 * math.pi * phase)
+            body = math.sin(2 * math.pi * phase)
+            click = math.exp(-t * 260.0) * _wave_value((phase * 6.0) % 1.0, "triangle")
+            return (body * 0.92) + (click * 0.18)
         case "snare":
             body = math.sin(2 * math.pi * phase) * 0.35
             return body + (rng.uniform(-1.0, 1.0) * 0.65)
@@ -183,6 +187,11 @@ def _metallic_cluster(t: float, frequency: float, metallic: float) -> float:
 
 
 def _envelope(t: float, patch: SynthPatch) -> float:
+    if patch.engine == "kick":
+        if t < patch.attack:
+            return t / max(patch.attack, 0.0001)
+        return math.exp(-(t - patch.attack) / max(patch.decay, 0.0001))
+
     if t < patch.attack:
         return t / max(patch.attack, 0.0001)
     elapsed = t - patch.attack
