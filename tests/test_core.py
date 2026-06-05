@@ -79,3 +79,45 @@ def test_kick_ai_plan_is_polished_into_sub_range() -> None:
     assert polished.filter_cutoff <= 1800
     assert polished.pitch_drop >= 1.6
     assert polished.metallic == 0.0
+
+
+def test_percussion_ai_plan_uses_resonant_body() -> None:
+    plan = _parse_patch(
+        '{"engine":"percussion","waveform":"triangle","frequency":900,'
+        '"duration":0.05,"amplitude":0.75,"attack":0.03,"decay":0.03,'
+        '"sustain":0.5,"release":0.01,"noise_mix":0,'
+        '"filter_cutoff":12000,"filter_mode":"highpass","drive":0.2,'
+        '"pitch_drop":2,"metallic":0.8,"bit_depth":16,'
+        '"osc2_waveform":"sine","osc2_ratio":1.5,"osc2_level":0.2,'
+        '"noise_type":"metal","noise_decay":0.04,'
+        '"filter_resonance":0.4,"filter_env":0,'
+        '"pitch_env":0,"pitch_decay":0.05,'
+        '"transient_level":0,"transient_tone":1800,'
+        '"body_level":0,"body_frequency":900,"body_decay":0.04,'
+        '"description":"conga"}'
+    )
+
+    polished = _polish_patch(plan)
+    sample = generate_wave_sample(
+        engine=polished.engine,
+        waveform=polished.waveform,
+        frequency=polished.frequency,
+        duration=polished.duration,
+        amplitude=polished.amplitude,
+        attack=polished.attack,
+        decay=polished.decay,
+        noise_mix=polished.noise_mix,
+        filter_cutoff=polished.filter_cutoff,
+        filter_mode=polished.filter_mode,
+        pitch_drop=polished.pitch_drop,
+        transient_level=polished.transient_level,
+        body_level=polished.body_level,
+        body_frequency=polished.body_frequency,
+        body_decay=polished.body_decay,
+    )
+
+    assert polished.engine == "percussion"
+    assert polished.body_level >= 0.35
+    assert 120 <= polished.body_frequency <= 520
+    assert polished.transient_level >= 0.12
+    assert sample.startswith(b"RIFF")
