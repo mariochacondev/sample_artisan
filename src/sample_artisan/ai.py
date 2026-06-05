@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 import os
 from urllib import error, request
@@ -100,7 +100,7 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
     except (OSError, error.URLError, json.JSONDecodeError) as exc:
         raise RuntimeError("Ollama is not available") from exc
 
-    return _parse_patch(raw.get("response", "{}"))
+    return _polish_patch(_parse_patch(raw.get("response", "{}")))
 
 
 def _parse_patch(raw_text: str) -> SynthPatch:
@@ -126,3 +126,27 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         bit_depth=int(patch_data["bit_depth"]),
         description=patch_data["description"],
     )
+
+
+def _polish_patch(patch: SynthPatch) -> SynthPatch:
+    if patch.engine == "kick":
+        return replace(
+            patch,
+            waveform="sine",
+            frequency=_clamp(patch.frequency, 35.0, 90.0),
+            duration=_clamp(patch.duration, 0.18, 0.85),
+            attack=_clamp(patch.attack, 0.001, 0.008),
+            decay=_clamp(patch.decay, 0.12, 0.6),
+            sustain=0.0,
+            release=_clamp(patch.release, 0.03, 0.18),
+            noise_mix=_clamp(patch.noise_mix, 0.0, 0.18),
+            filter_cutoff=_clamp(patch.filter_cutoff, 180.0, 1_800.0),
+            filter_mode="lowpass",
+            pitch_drop=max(patch.pitch_drop, 1.6),
+            metallic=0.0,
+        )
+    return patch
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
