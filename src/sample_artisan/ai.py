@@ -166,35 +166,35 @@ def _parse_patch(raw_text: str) -> SynthPatch:
     return SynthPatch(
         engine=patch_data["engine"],
         waveform=patch_data["waveform"],
-        frequency=float(patch_data["frequency"]),
-        duration=float(patch_data["duration"]),
-        amplitude=float(patch_data["amplitude"]),
-        attack=float(patch_data["attack"]),
-        decay=float(patch_data["decay"]),
-        sustain=float(patch_data["sustain"]),
-        release=float(patch_data["release"]),
-        noise_mix=float(patch_data["noise_mix"]),
-        filter_cutoff=float(patch_data["filter_cutoff"]),
+        frequency=_float_value(patch_data, "frequency"),
+        duration=_float_value(patch_data, "duration"),
+        amplitude=_float_value(patch_data, "amplitude"),
+        attack=_float_value(patch_data, "attack"),
+        decay=_float_value(patch_data, "decay"),
+        sustain=_float_value(patch_data, "sustain"),
+        release=_float_value(patch_data, "release"),
+        noise_mix=_float_value(patch_data, "noise_mix"),
+        filter_cutoff=_float_value(patch_data, "filter_cutoff"),
         filter_mode=patch_data["filter_mode"],
-        drive=float(patch_data["drive"]),
-        pitch_drop=float(patch_data["pitch_drop"]),
-        metallic=float(patch_data["metallic"]),
-        bit_depth=int(patch_data["bit_depth"]),
+        drive=_float_value(patch_data, "drive"),
+        pitch_drop=_float_value(patch_data, "pitch_drop"),
+        metallic=_float_value(patch_data, "metallic"),
+        bit_depth=_int_value(patch_data, "bit_depth"),
         osc2_waveform=patch_data["osc2_waveform"],
-        osc2_ratio=float(patch_data["osc2_ratio"]),
-        osc2_level=float(patch_data["osc2_level"]),
+        osc2_ratio=_float_value(patch_data, "osc2_ratio"),
+        osc2_level=_float_value(patch_data, "osc2_level"),
         noise_type=patch_data["noise_type"],
-        noise_decay=float(patch_data["noise_decay"]),
-        filter_resonance=float(patch_data["filter_resonance"]),
-        filter_env=float(patch_data["filter_env"]),
-        pitch_env=float(patch_data["pitch_env"]),
-        pitch_decay=float(patch_data["pitch_decay"]),
-        transient_level=float(patch_data["transient_level"]),
-        transient_tone=float(patch_data["transient_tone"]),
-        body_level=float(patch_data["body_level"]),
-        body_frequency=float(patch_data["body_frequency"]),
-        body_decay=float(patch_data["body_decay"]),
-        description=patch_data["description"],
+        noise_decay=_float_value(patch_data, "noise_decay"),
+        filter_resonance=_float_value(patch_data, "filter_resonance"),
+        filter_env=_float_value(patch_data, "filter_env"),
+        pitch_env=_float_value(patch_data, "pitch_env"),
+        pitch_decay=_float_value(patch_data, "pitch_decay"),
+        transient_level=_float_value(patch_data, "transient_level"),
+        transient_tone=_float_value(patch_data, "transient_tone"),
+        body_level=_float_value(patch_data, "body_level"),
+        body_frequency=_float_value(patch_data, "body_frequency"),
+        body_decay=_float_value(patch_data, "body_decay"),
+        description=str(patch_data["description"]),
     )
 
 
@@ -306,6 +306,22 @@ def _normalize_engine(engine: str) -> str:
 def _normalize_choice(value: str, choices: tuple[str, ...], default: str) -> str:
     normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
     return normalized if normalized in choices else default
+
+
+def _float_value(data: dict[str, object], key: str) -> float:
+    default = getattr(SynthPatch(), key)
+    try:
+        return float(data[key])
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _int_value(data: dict[str, object], key: str) -> int:
+    default = getattr(SynthPatch(), key)
+    try:
+        return int(float(data[key]))
+    except (TypeError, ValueError):
+        return int(default)
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
