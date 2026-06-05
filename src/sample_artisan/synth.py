@@ -329,16 +329,32 @@ def _apply_bit_depth(value: float, bit_depth: int) -> float:
 
 
 def _apply_filter(values: list[float], patch: SynthPatch, sample_rate: int) -> list[float]:
-    cutoff = _clamp(patch.filter_cutoff, 40.0, sample_rate / 2)
-    rc = 1.0 / (2 * math.pi * cutoff)
     dt = 1.0 / sample_rate
-    alpha = dt / (rc + dt)
     low = 0.0
+    band = 0.0
     filtered: list[float] = []
-    for value in values:
+    frame_count = max(1, len(values))
+    for index, value in enumerate(values):
+        progress = index / frame_count
+        cutoff = _filter_cutoff_at(patch, progress, sample_rate)
+        rc = 1.0 / (2 * math.pi * cutoff)
+        alpha = dt / (rc + dt)
         low += alpha * (value - low)
-        filtered.append(low if patch.filter_mode == "lowpass" else value - low)
+        high = value - low
+        band += alpha * (high - band)
+        resonance = band * patch.filter_resonance * 1.8
+        filtered.append(
+            (low + resonance)
+            if patch.filter_mode == "lowpass"
+            else (high + resonance)
+        )
     return filtered
+
+
+def _filter_cutoff_at(patch: SynthPatch, progress: float, sample_rate: int) -> float:
+    env_amount = patch.filter_env * (1.0 - progress) ** 2
+    cutoff = patch.filter_cutoff * (2.0 ** env_amount)
+    return _clamp(cutoff, 40.0, sample_rate / 2)
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
