@@ -221,6 +221,12 @@ INDEX_HTML = """<!doctype html>
       transform: translateY(-1px);
     }
 
+    button:disabled {
+      cursor: wait;
+      opacity: 0.72;
+      transform: none;
+    }
+
     .value {
       float: right;
       color: var(--muted);
@@ -243,11 +249,46 @@ INDEX_HTML = """<!doctype html>
     }
 
     .waveform {
+      position: relative;
       width: 100%;
       min-height: 280px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fbfcfd;
+      overflow: hidden;
+    }
+
+    .loader {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(251, 252, 253, 0.78);
+      color: var(--accent-strong);
+      font-size: 14px;
+      font-weight: 800;
+      z-index: 2;
+    }
+
+    .loader::before {
+      content: "";
+      width: 24px;
+      height: 24px;
+      margin-right: 10px;
+      border: 3px solid rgba(47, 125, 109, 0.18);
+      border-top-color: var(--accent);
+      border-radius: 999px;
+      animation: spin 800ms linear infinite;
+    }
+
+    .is-loading .loader {
+      display: flex;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     canvas {
@@ -363,6 +404,7 @@ INDEX_HTML = """<!doctype html>
         </div>
       </div>
       <div class="waveform">
+        <div class="loader" id="loader">Generating sample</div>
         <canvas id="canvas"></canvas>
       </div>
       <audio id="audio" controls></audio>
@@ -388,6 +430,7 @@ INDEX_HTML = """<!doctype html>
     };
 
     const promptInput = document.getElementById("prompt");
+    const generateButton = document.getElementById("generate");
 
     const labels = {
       frequency: document.getElementById("frequencyValue"),
@@ -405,6 +448,8 @@ INDEX_HTML = """<!doctype html>
 
     const audio = document.getElementById("audio");
     const canvas = document.getElementById("canvas");
+    const waveformPanel = document.querySelector(".waveform");
+    const loader = document.getElementById("loader");
     const status = document.getElementById("status");
     const sampleRate = document.getElementById("sampleRate");
     const channels = document.getElementById("channels");
@@ -447,24 +492,47 @@ INDEX_HTML = """<!doctype html>
       return `/api/sample.wav?${params.toString()}`;
     }
 
-    async function renderFromControls(message = "") {
+    function setLoading(isLoading, message = "Generating sample") {
+      waveformPanel.classList.toggle("is-loading", isLoading);
+      generateButton.disabled = isLoading;
+      generateButton.textContent = isLoading ? "Generating..." : "Generate sample";
+      loader.textContent = message;
+    }
+
+    async function renderFromControls(message = "", loadingMessage = "Generating sample") {
       updateLabels();
       status.textContent = "Generating";
-      const response = await fetch(buildUrl());
-      const bytes = await response.arrayBuffer();
-      currentBuffer = await context.decodeAudioData(bytes.slice(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
-      audio.src = url;
-      sampleRate.textContent = `${(currentBuffer.sampleRate / 1000).toFixed(1)} kHz`;
-      channels.textContent = currentBuffer.numberOfChannels === 1 ? "Mono" : `${currentBuffer.numberOfChannels} channels`;
-      status.textContent = message || `${controls.engine.value} sample at ${controls.frequency.value} Hz`;
-      drawWaveform();
+      setLoading(true, loadingMessage);
+      try {
+        const response = await fetch(buildUrl());
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        const bytes = await response.arrayBuffer();
+        currentBuffer = await context.decodeAudioData(bytes.slice(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+        audio.src = url;
+        sampleRate.textContent = `${(currentBuffer.sampleRate / 1000).toFixed(1)} kHz`;
+        channels.textContent = currentBuffer.numberOfChannels === 1 ? "Mono" : `${currentBuffer.numberOfChannels} channels`;
+        status.textContent = message || `${controls.engine.value} sample at ${controls.frequency.value} Hz`;
+        drawWaveform();
+      } finally {
+        setLoading(false);
+      }
     }
 
     async function generate() {
+      if (generateButton.disabled) {
+        return;
+      }
+
       const prompt = promptInput.value.trim();
       if (!prompt) {
-        await renderFromControls();
+        try {
+          await renderFromControls();
+        } catch (error) {
+          status.textContent = "Sample generation failed. Check the parameters.";
+        }
         return;
       }
 
@@ -473,6 +541,7 @@ INDEX_HTML = """<!doctype html>
 
     async function planFromPrompt(prompt) {
       status.textContent = "Planning sample with AI";
+      setLoading(true, "Planning with AI");
       try {
         const response = await fetch(`/api/prompt?prompt=${encodeURIComponent(prompt)}`);
         if (!response.ok) {
@@ -493,9 +562,10 @@ INDEX_HTML = """<!doctype html>
         controls.pitchDrop.value = Number(plan.pitch_drop).toFixed(2);
         controls.metallic.value = Number(plan.metallic).toFixed(2);
         controls.bitDepth.value = plan.bit_depth;
-        await renderFromControls(plan.description);
+        await renderFromControls(plan.description, "Generating sample");
       } catch (error) {
         status.textContent = "AI prompt failed. Try a different prompt.";
+        setLoading(false);
       }
     }
 
