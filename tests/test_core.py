@@ -1,7 +1,7 @@
 import pytest
 
 from sample_artisan import generate_wave_sample
-from sample_artisan.ai import _parse_patch
+from sample_artisan.ai import _parse_patch, _polish_patch
 from sample_artisan.cli import build_parser
 
 
@@ -56,3 +56,26 @@ def test_parse_ai_sample_plan() -> None:
     assert plan.frequency == 7500
     assert plan.filter_mode == "highpass"
     assert plan.amplitude == 0.8
+
+
+def test_kick_ai_plan_is_polished_into_sub_range() -> None:
+    plan = _parse_patch(
+        '{"engine":"kick","waveform":"square","frequency":236,'
+        '"duration":0.08,"amplitude":0.8,"attack":0.02,"decay":0.05,'
+        '"sustain":0.4,"release":0.01,"noise_mix":0.8,'
+        '"filter_cutoff":7000,"filter_mode":"highpass","drive":0.2,'
+        '"pitch_drop":0,"metallic":0.9,"bit_depth":12,'
+        '"description":"sub kick"}'
+    )
+
+    polished = _polish_patch(plan)
+
+    assert polished.engine == "kick"
+    assert polished.waveform == "sine"
+    assert polished.frequency <= 90
+    assert polished.duration >= 0.18
+    assert polished.decay >= 0.12
+    assert polished.filter_mode == "lowpass"
+    assert polished.filter_cutoff <= 1800
+    assert polished.pitch_drop >= 1.6
+    assert polished.metallic == 0.0
