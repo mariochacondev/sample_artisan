@@ -3,6 +3,7 @@ import pytest
 from sample_artisan import generate_wave_sample
 from sample_artisan.ai import _parse_patch, _polish_patch
 from sample_artisan.cli import build_parser
+from sample_artisan.synth import _chord_intervals, _chord_root_frequency
 
 
 def test_generate_wave_sample_returns_wav_bytes() -> None:
@@ -51,6 +52,30 @@ def test_generate_sample_with_realism_controls() -> None:
     assert len(sample) > 1000
 
 
+def test_generate_chord_sample_uses_oscillator_stack() -> None:
+    sample = generate_wave_sample(
+        engine="pluck",
+        chord="Am9",
+        waveform="saw",
+        duration=0.45,
+        osc1_level=0.85,
+        osc1_octave=0,
+        osc2_waveform="triangle",
+        osc2_level=0.35,
+        osc2_octave=1,
+        osc2_fine=-7,
+        filter_cutoff=5000,
+    )
+
+    assert sample.startswith(b"RIFF")
+    assert len(sample) > 1000
+
+
+def test_chord_parser_supports_am9() -> None:
+    assert _chord_intervals("Am9") == (0, 3, 7, 10, 14)
+    assert round(_chord_root_frequency("Am9") or 0) == 220
+
+
 def test_cli_parser_defaults_to_sample_wav() -> None:
     args = build_parser().parse_args([])
 
@@ -67,6 +92,10 @@ def test_parse_ai_sample_plan() -> None:
         '"sustain":0,"release":0.01,"noise_mix":0.95,'
         '"filter_cutoff":7000,"filter_mode":"highpass","drive":0.2,'
         '"pitch_drop":0,"metallic":0.9,"bit_depth":12,'
+        '"chord":"Am9","osc1_level":0.9,"osc1_octave":0,'
+        '"osc1_semitone":0,"osc1_fine":0,'
+        '"osc2_waveform":"saw","osc2_ratio":1,"osc2_level":0.4,'
+        '"osc2_octave":1,"osc2_semitone":7,"osc2_fine":-5,'
         '"description":"tight hat"}'
     )
 
@@ -74,6 +103,9 @@ def test_parse_ai_sample_plan() -> None:
     assert plan.frequency == 7500
     assert plan.filter_mode == "highpass"
     assert plan.amplitude == 0.8
+    assert plan.chord == "Am9"
+    assert plan.osc2_octave == 1
+    assert plan.osc2_fine == -5
 
 
 def test_kick_ai_plan_is_polished_into_sub_range() -> None:
