@@ -79,6 +79,10 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
                 body_level=_float_param(params, "body_level", 0.0),
                 body_frequency=_float_param(params, "body_frequency", 180.0),
                 body_decay=_float_param(params, "body_decay", 0.35),
+                character=_float_param(params, "character", 0.0),
+                drift=_float_param(params, "drift", 0.0),
+                smear=_float_param(params, "smear", 0.0),
+                space=_float_param(params, "space", 0.0),
             )
         except ValueError as error:
             self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
@@ -217,6 +221,10 @@ INDEX_HTML = """<!doctype html>
             <div class="field"><label for="bodyLevel">Body level <span class="value" id="bodyLevelValue"></span></label><input id="bodyLevel" type="range" min="0" max="1" step="0.01" value="0"></div>
             <div class="field"><label for="bodyFrequency">Body frequency <span class="value" id="bodyFrequencyValue"></span></label><input id="bodyFrequency" type="range" min="35" max="2000" step="1" value="180"></div>
             <div class="field"><label for="bodyDecay">Body decay <span class="value" id="bodyDecayValue"></span></label><input id="bodyDecay" type="range" min="0.02" max="4" step="0.01" value="0.35"></div>
+            <div class="field"><label for="character">Character <span class="value" id="characterValue"></span></label><input id="character" type="range" min="0" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="drift">Drift <span class="value" id="driftValue"></span></label><input id="drift" type="range" min="0" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="smear">Smear <span class="value" id="smearValue"></span></label><input id="smear" type="range" min="0" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="space">Space <span class="value" id="spaceValue"></span></label><input id="space" type="range" min="0" max="1" step="0.01" value="0"></div>
           </div>
         </details>
       </div>
@@ -231,9 +239,9 @@ INDEX_HTML = """<!doctype html>
   </main>
 
   <script>
-    const ids = ["engine","waveform","frequency","duration","amplitude","attack","decay","noiseMix","filterCutoff","filterMode","drive","pitchDrop","metallic","bitDepth","osc2Waveform","osc2Ratio","osc2Level","noiseType","noiseDecay","filterResonance","filterEnv","pitchEnv","pitchDecay","transientLevel","transientTone","bodyLevel","bodyFrequency","bodyDecay"];
+    const ids = ["engine","waveform","frequency","duration","amplitude","attack","decay","noiseMix","filterCutoff","filterMode","drive","pitchDrop","metallic","bitDepth","osc2Waveform","osc2Ratio","osc2Level","noiseType","noiseDecay","filterResonance","filterEnv","pitchEnv","pitchDecay","transientLevel","transientTone","bodyLevel","bodyFrequency","bodyDecay","character","drift","smear","space"];
     const controls = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
-    const labelIds = ["frequency","duration","amplitude","attack","decay","noiseMix","filterCutoff","drive","pitchDrop","metallic","bitDepth","osc2Ratio","osc2Level","noiseDecay","filterResonance","filterEnv","pitchEnv","pitchDecay","transientLevel","transientTone","bodyLevel","bodyFrequency","bodyDecay"];
+    const labelIds = ["frequency","duration","amplitude","attack","decay","noiseMix","filterCutoff","drive","pitchDrop","metallic","bitDepth","osc2Ratio","osc2Level","noiseDecay","filterResonance","filterEnv","pitchEnv","pitchDecay","transientLevel","transientTone","bodyLevel","bodyFrequency","bodyDecay","character","drift","smear","space"];
     const labels = Object.fromEntries(labelIds.map((id) => [id, document.getElementById(`${id}Value`)]));
     const promptInput = document.getElementById("prompt");
     const generateButton = document.getElementById("generate");
@@ -275,6 +283,10 @@ INDEX_HTML = """<!doctype html>
       labels.bodyLevel.textContent = percent(controls.bodyLevel.value);
       labels.bodyFrequency.textContent = `${controls.bodyFrequency.value} Hz`;
       labels.bodyDecay.textContent = `${fixed(controls.bodyDecay.value, 2)} s`;
+      labels.character.textContent = percent(controls.character.value);
+      labels.drift.textContent = percent(controls.drift.value);
+      labels.smear.textContent = percent(controls.smear.value);
+      labels.space.textContent = percent(controls.space.value);
     }
 
     function buildUrl() {
@@ -308,7 +320,11 @@ INDEX_HTML = """<!doctype html>
         transient_tone: controls.transientTone.value,
         body_level: controls.bodyLevel.value,
         body_frequency: controls.bodyFrequency.value,
-        body_decay: controls.bodyDecay.value
+        body_decay: controls.bodyDecay.value,
+        character: controls.character.value,
+        drift: controls.drift.value,
+        smear: controls.smear.value,
+        space: controls.space.value
       });
       return `/api/sample.wav?${params.toString()}`;
     }
@@ -374,7 +390,8 @@ INDEX_HTML = """<!doctype html>
         noise_mix:"noiseMix", filter_cutoff:"filterCutoff", filter_mode:"filterMode", drive:"drive", pitch_drop:"pitchDrop", metallic:"metallic",
         bit_depth:"bitDepth", osc2_waveform:"osc2Waveform", osc2_ratio:"osc2Ratio", osc2_level:"osc2Level", noise_type:"noiseType",
         noise_decay:"noiseDecay", filter_resonance:"filterResonance", filter_env:"filterEnv", pitch_env:"pitchEnv", pitch_decay:"pitchDecay",
-        transient_level:"transientLevel", transient_tone:"transientTone", body_level:"bodyLevel", body_frequency:"bodyFrequency", body_decay:"bodyDecay"
+        transient_level:"transientLevel", transient_tone:"transientTone", body_level:"bodyLevel", body_frequency:"bodyFrequency", body_decay:"bodyDecay",
+        character:"character", drift:"drift", smear:"smear", space:"space"
       };
       Object.entries(map).forEach(([key, id]) => {
         if (plan[key] !== undefined && controls[id]) controls[id].value = plan[key];
