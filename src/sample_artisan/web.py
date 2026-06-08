@@ -135,88 +135,92 @@ INDEX_HTML = """<!doctype html>
   <style>
     :root { --ink:#1b1d1f; --muted:#62666d; --line:#d8dce2; --surface:#f7f8fa; --accent:#2f7d6d; --accent-strong:#225f53; }
     * { box-sizing:border-box; }
-    body { margin:0; min-height:100svh; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#fff; }
-    main { display:grid; grid-template-columns:minmax(280px, 360px) minmax(0, 1fr); min-height:100svh; }
-    aside { padding:28px; border-right:1px solid var(--line); background:var(--surface); overflow:auto; }
-    .workspace { display:grid; grid-template-rows:auto minmax(280px, 1fr) auto auto; gap:20px; padding:32px; min-width:0; }
+    body { margin:0; height:100svh; overflow:hidden; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#fff; }
+    main { display:grid; grid-template-rows:minmax(280px, 43svh) minmax(0, 1fr); height:100svh; min-width:0; overflow:hidden; }
+    .parameters { display:grid; grid-template-rows:auto minmax(0, 1fr); gap:14px; min-height:0; padding:20px 24px; border-bottom:1px solid var(--line); background:var(--surface); }
+    .workspace { display:grid; grid-template-rows:auto minmax(0, 1fr) auto auto; gap:14px; min-height:0; min-width:0; padding:20px 24px; }
+    .panel-head { display:flex; justify-content:space-between; gap:18px; align-items:end; }
+    .panel-head button { width:auto; min-width:180px; margin:0; }
+    .controls-scroll { min-height:0; overflow:auto; padding-right:4px; }
+    .control-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px 14px; align-items:end; }
+    .prompt-field { grid-column:span 2; }
+    .field { min-width:0; }
     h1 { margin:0 0 8px; font-size:28px; line-height:1.1; letter-spacing:0; }
     p { margin:0; color:var(--muted); line-height:1.5; }
-    label { display:block; margin:18px 0 8px; color:#30343a; font-size:13px; font-weight:700; }
+    label { display:block; margin:0 0 6px; color:#30343a; font-size:13px; font-weight:700; }
     input[type="range"], select, textarea, button { width:100%; font:inherit; }
     input[type="range"] { accent-color:var(--accent); }
     select, textarea { border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:9px 10px; }
     button { height:44px; margin-top:24px; border:0; border-radius:6px; background:var(--accent); color:#fff; font-weight:800; cursor:pointer; }
     button:hover { background:var(--accent-strong); }
     button:disabled { cursor:wait; opacity:.72; }
-    details { margin-top:22px; padding-top:16px; border-top:1px solid var(--line); }
+    details { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
     summary { color:#30343a; font-size:13px; font-weight:800; cursor:pointer; }
     .value { float:right; color:var(--muted); font-weight:600; }
     .topline { display:flex; justify-content:space-between; gap:16px; align-items:end; }
     .stats { display:flex; gap:16px; color:var(--muted); font-size:13px; white-space:nowrap; }
-    .waveform { position:relative; width:100%; min-height:280px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; overflow:hidden; }
-    canvas { display:block; width:100%; height:100%; min-height:280px; }
+    .waveform { position:relative; width:100%; min-height:0; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; overflow:hidden; }
+    canvas { display:block; width:100%; height:100%; min-height:0; }
     audio { width:100%; }
     .loader { position:absolute; inset:0; display:none; place-items:center; background:rgba(251,252,253,.78); color:var(--accent-strong); font-size:14px; font-weight:800; z-index:2; }
     .loader::before { content:""; width:24px; height:24px; margin-right:10px; border:3px solid rgba(47,125,109,.18); border-top-color:var(--accent); border-radius:999px; animation:spin 800ms linear infinite; }
     .is-loading .loader { display:flex; }
-    .patch-details { margin:0; max-height:180px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--muted); padding:12px; font:12px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space:pre-wrap; }
+    .patch-details { margin:0; max-height:88px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--muted); padding:10px 12px; font:12px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space:pre-wrap; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    @media (max-width:780px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .workspace { padding:24px; } .topline { align-items:start; flex-direction:column; } }
+    @media (max-width:780px) { main { grid-template-rows:minmax(330px, 50svh) minmax(0, 1fr); } .parameters, .workspace { padding:18px; } .panel-head { align-items:stretch; flex-direction:column; } .panel-head button { width:100%; } .prompt-field { grid-column:1 / -1; } .topline { align-items:start; flex-direction:column; } }
   </style>
 </head>
 <body>
   <main>
-    <aside>
-      <h1>Audio Sample Generator</h1>
-      <p>Generate a sample and inspect the rendered waveform.</p>
+    <section class="parameters" aria-label="Sample parameters">
+      <div class="panel-head">
+        <div>
+          <h1>Audio Sample Generator</h1>
+          <p>Prompt a sound or shape the patch manually.</p>
+        </div>
+        <button id="generate">Generate sample</button>
+      </div>
 
-      <label for="prompt">AI prompt</label>
-      <textarea id="prompt" rows="4" placeholder="closed hi-hat, cymbal, conga, sub kick, gritty bass"></textarea>
+      <div class="controls-scroll">
+        <div class="control-grid">
+          <div class="field prompt-field"><label for="prompt">AI prompt</label><textarea id="prompt" rows="3" placeholder="closed hi-hat, cymbal, conga, sub kick, gritty bass"></textarea></div>
+          <div class="field"><label for="engine">Sound type</label><select id="engine"><option value="tone">Tone</option><option value="kick">Kick</option><option value="snare">Snare</option><option value="closed_hat">Closed hat</option><option value="open_hat">Open hat / cymbal</option><option value="noise">Noise</option><option value="percussion">Percussion</option><option value="bass">Bass</option><option value="pluck">Pluck</option><option value="texture">Texture</option></select></div>
+          <div class="field"><label for="waveform">Waveform</label><select id="waveform"><option value="sine">Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option></select></div>
+          <div class="field"><label for="frequency">Frequency <span class="value" id="frequencyValue"></span></label><input id="frequency" type="range" min="80" max="1200" value="440"></div>
+          <div class="field"><label for="duration">Duration <span class="value" id="durationValue"></span></label><input id="duration" type="range" min="0.03" max="3" step="0.01" value="1"></div>
+          <div class="field"><label for="amplitude">Amplitude <span class="value" id="amplitudeValue"></span></label><input id="amplitude" type="range" min="0.1" max="1" step="0.01" value="0.65"></div>
+          <div class="field"><label for="attack">Attack <span class="value" id="attackValue"></span></label><input id="attack" type="range" min="0" max="0.5" step="0.001" value="0.005"></div>
+          <div class="field"><label for="decay">Decay <span class="value" id="decayValue"></span></label><input id="decay" type="range" min="0.01" max="2" step="0.01" value="0.25"></div>
+          <div class="field"><label for="noiseMix">Noise <span class="value" id="noiseMixValue"></span></label><input id="noiseMix" type="range" min="0" max="1" step="0.01" value="0"></div>
+          <div class="field"><label for="filterCutoff">Filter <span class="value" id="filterCutoffValue"></span></label><input id="filterCutoff" type="range" min="80" max="18000" step="10" value="12000"></div>
+          <div class="field"><label for="filterMode">Filter mode</label><select id="filterMode"><option value="lowpass">Lowpass</option><option value="highpass">Highpass</option></select></div>
+          <div class="field"><label for="drive">Drive <span class="value" id="driveValue"></span></label><input id="drive" type="range" min="0" max="1" step="0.01" value="0"></div>
+          <div class="field"><label for="pitchDrop">Pitch drop <span class="value" id="pitchDropValue"></span></label><input id="pitchDrop" type="range" min="0" max="4" step="0.01" value="0"></div>
+          <div class="field"><label for="metallic">Metallic <span class="value" id="metallicValue"></span></label><input id="metallic" type="range" min="0" max="1" step="0.01" value="0"></div>
+          <div class="field"><label for="bitDepth">Bit depth <span class="value" id="bitDepthValue"></span></label><input id="bitDepth" type="range" min="4" max="16" step="1" value="16"></div>
+        </div>
 
-      <label for="engine">Sound type</label>
-      <select id="engine">
-        <option value="tone">Tone</option><option value="kick">Kick</option><option value="snare">Snare</option>
-        <option value="closed_hat">Closed hat</option><option value="open_hat">Open hat / cymbal</option>
-        <option value="noise">Noise</option><option value="percussion">Percussion</option>
-        <option value="bass">Bass</option><option value="pluck">Pluck</option><option value="texture">Texture</option>
-      </select>
-
-      <label for="waveform">Waveform</label>
-      <select id="waveform"><option value="sine">Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option></select>
-
-      <label for="frequency">Frequency <span class="value" id="frequencyValue"></span></label><input id="frequency" type="range" min="80" max="1200" value="440">
-      <label for="duration">Duration <span class="value" id="durationValue"></span></label><input id="duration" type="range" min="0.03" max="3" step="0.01" value="1">
-      <label for="amplitude">Amplitude <span class="value" id="amplitudeValue"></span></label><input id="amplitude" type="range" min="0.1" max="1" step="0.01" value="0.65">
-      <label for="attack">Attack <span class="value" id="attackValue"></span></label><input id="attack" type="range" min="0" max="0.5" step="0.001" value="0.005">
-      <label for="decay">Decay <span class="value" id="decayValue"></span></label><input id="decay" type="range" min="0.01" max="2" step="0.01" value="0.25">
-      <label for="noiseMix">Noise <span class="value" id="noiseMixValue"></span></label><input id="noiseMix" type="range" min="0" max="1" step="0.01" value="0">
-      <label for="filterCutoff">Filter <span class="value" id="filterCutoffValue"></span></label><input id="filterCutoff" type="range" min="80" max="18000" step="10" value="12000">
-      <label for="filterMode">Filter mode</label><select id="filterMode"><option value="lowpass">Lowpass</option><option value="highpass">Highpass</option></select>
-      <label for="drive">Drive <span class="value" id="driveValue"></span></label><input id="drive" type="range" min="0" max="1" step="0.01" value="0">
-      <label for="pitchDrop">Pitch drop <span class="value" id="pitchDropValue"></span></label><input id="pitchDrop" type="range" min="0" max="4" step="0.01" value="0">
-      <label for="metallic">Metallic <span class="value" id="metallicValue"></span></label><input id="metallic" type="range" min="0" max="1" step="0.01" value="0">
-      <label for="bitDepth">Bit depth <span class="value" id="bitDepthValue"></span></label><input id="bitDepth" type="range" min="4" max="16" step="1" value="16">
-
-      <details open>
-        <summary>Advanced sound design</summary>
-        <label for="osc2Waveform">Oscillator 2 waveform</label><select id="osc2Waveform"><option value="sine">Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option></select>
-        <label for="osc2Ratio">Oscillator 2 ratio <span class="value" id="osc2RatioValue"></span></label><input id="osc2Ratio" type="range" min="0.25" max="8" step="0.01" value="1">
-        <label for="osc2Level">Oscillator 2 level <span class="value" id="osc2LevelValue"></span></label><input id="osc2Level" type="range" min="0" max="1" step="0.01" value="0">
-        <label for="noiseType">Noise type</label><select id="noiseType"><option value="white">White</option><option value="dark">Dark</option><option value="bright">Bright</option><option value="wood">Wood</option><option value="metal">Metal</option></select>
-        <label for="noiseDecay">Noise decay <span class="value" id="noiseDecayValue"></span></label><input id="noiseDecay" type="range" min="0.005" max="3" step="0.005" value="0.08">
-        <label for="filterResonance">Filter resonance <span class="value" id="filterResonanceValue"></span></label><input id="filterResonance" type="range" min="0" max="1" step="0.01" value="0">
-        <label for="filterEnv">Filter envelope <span class="value" id="filterEnvValue"></span></label><input id="filterEnv" type="range" min="-1" max="1" step="0.01" value="0">
-        <label for="pitchEnv">Pitch envelope <span class="value" id="pitchEnvValue"></span></label><input id="pitchEnv" type="range" min="-1200" max="1200" step="1" value="0">
-        <label for="pitchDecay">Pitch decay <span class="value" id="pitchDecayValue"></span></label><input id="pitchDecay" type="range" min="0.005" max="2" step="0.005" value="0.08">
-        <label for="transientLevel">Transient level <span class="value" id="transientLevelValue"></span></label><input id="transientLevel" type="range" min="0" max="1" step="0.01" value="0">
-        <label for="transientTone">Transient tone <span class="value" id="transientToneValue"></span></label><input id="transientTone" type="range" min="80" max="12000" step="10" value="1500">
-        <label for="bodyLevel">Body level <span class="value" id="bodyLevelValue"></span></label><input id="bodyLevel" type="range" min="0" max="1" step="0.01" value="0">
-        <label for="bodyFrequency">Body frequency <span class="value" id="bodyFrequencyValue"></span></label><input id="bodyFrequency" type="range" min="35" max="2000" step="1" value="180">
-        <label for="bodyDecay">Body decay <span class="value" id="bodyDecayValue"></span></label><input id="bodyDecay" type="range" min="0.02" max="4" step="0.01" value="0.35">
-      </details>
-
-      <button id="generate">Generate sample</button>
-    </aside>
+        <details open>
+          <summary>Advanced sound design</summary>
+          <div class="control-grid">
+            <div class="field"><label for="osc2Waveform">Oscillator 2 waveform</label><select id="osc2Waveform"><option value="sine">Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option></select></div>
+            <div class="field"><label for="osc2Ratio">Oscillator 2 ratio <span class="value" id="osc2RatioValue"></span></label><input id="osc2Ratio" type="range" min="0.25" max="8" step="0.01" value="1"></div>
+            <div class="field"><label for="osc2Level">Oscillator 2 level <span class="value" id="osc2LevelValue"></span></label><input id="osc2Level" type="range" min="0" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="noiseType">Noise type</label><select id="noiseType"><option value="white">White</option><option value="dark">Dark</option><option value="bright">Bright</option><option value="wood">Wood</option><option value="metal">Metal</option></select></div>
+            <div class="field"><label for="noiseDecay">Noise decay <span class="value" id="noiseDecayValue"></span></label><input id="noiseDecay" type="range" min="0.005" max="3" step="0.005" value="0.08"></div>
+            <div class="field"><label for="filterResonance">Filter resonance <span class="value" id="filterResonanceValue"></span></label><input id="filterResonance" type="range" min="0" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="filterEnv">Filter envelope <span class="value" id="filterEnvValue"></span></label><input id="filterEnv" type="range" min="-1" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="pitchEnv">Pitch envelope <span class="value" id="pitchEnvValue"></span></label><input id="pitchEnv" type="range" min="-1200" max="1200" step="1" value="0"></div>
+            <div class="field"><label for="pitchDecay">Pitch decay <span class="value" id="pitchDecayValue"></span></label><input id="pitchDecay" type="range" min="0.005" max="2" step="0.005" value="0.08"></div>
+            <div class="field"><label for="transientLevel">Transient level <span class="value" id="transientLevelValue"></span></label><input id="transientLevel" type="range" min="0" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="transientTone">Transient tone <span class="value" id="transientToneValue"></span></label><input id="transientTone" type="range" min="80" max="12000" step="10" value="1500"></div>
+            <div class="field"><label for="bodyLevel">Body level <span class="value" id="bodyLevelValue"></span></label><input id="bodyLevel" type="range" min="0" max="1" step="0.01" value="0"></div>
+            <div class="field"><label for="bodyFrequency">Body frequency <span class="value" id="bodyFrequencyValue"></span></label><input id="bodyFrequency" type="range" min="35" max="2000" step="1" value="180"></div>
+            <div class="field"><label for="bodyDecay">Body decay <span class="value" id="bodyDecayValue"></span></label><input id="bodyDecay" type="range" min="0.02" max="4" step="0.01" value="0.35"></div>
+          </div>
+        </details>
+      </div>
+    </section>
 
     <section class="workspace" aria-label="Waveform workspace">
       <div class="topline"><div><h1>Waveform</h1><p id="status">Ready</p></div><div class="stats"><span id="sampleRate">44.1 kHz</span><span id="channels">Mono</span></div></div>
