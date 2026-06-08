@@ -46,6 +46,10 @@ PATCH_SCHEMA = {
         "body_level": {"type": "number", "minimum": 0, "maximum": 1},
         "body_frequency": {"type": "number", "minimum": 35, "maximum": 2000},
         "body_decay": {"type": "number", "minimum": 0.02, "maximum": 4},
+        "character": {"type": "number", "minimum": 0, "maximum": 1},
+        "drift": {"type": "number", "minimum": 0, "maximum": 1},
+        "smear": {"type": "number", "minimum": 0, "maximum": 1},
+        "space": {"type": "number", "minimum": 0, "maximum": 1},
         "description": {"type": "string"},
     },
     "required": [
@@ -79,6 +83,10 @@ PATCH_SCHEMA = {
         "body_level",
         "body_frequency",
         "body_decay",
+        "character",
+        "drift",
+        "smear",
+        "space",
         "description",
     ],
 }
@@ -99,7 +107,7 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "You are designing one-shot synthesizer patches for a Python audio tool. "
         "Return only one JSON object. Think like a Serum/Vital sound "
         "designer building a one-shot patch from oscillators, noise, transient, "
-        "filter, pitch envelope, and resonant body. Use broad engines instead "
+        "filter, pitch envelope, resonant body, and realism controls. Use broad engines instead "
         "of literal instrument names: conga, bongo, tom, wood block, and hand "
         "drum -> percussion with body_level, body_frequency, transient_level, "
         "wood noise, and short-to-medium decay; kick or bass drum -> kick; "
@@ -114,7 +122,10 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "filter_mode, drive, pitch_drop, metallic, bit_depth, osc2_waveform, "
         "osc2_ratio, osc2_level, noise_type, noise_decay, filter_resonance, "
         "filter_env, pitch_env, pitch_decay, transient_level, transient_tone, "
-        "body_level, body_frequency, body_decay, description."
+        "body_level, body_frequency, body_decay, character, drift, smear, "
+        "space, description. Use character, drift, smear, and space to make "
+        "organic, acoustic, dusty, realistic, live, imperfect, or vintage sounds "
+        "less robotic; keep them low for clean synthetic sounds."
     )
     body = {
         "model": model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
@@ -194,6 +205,10 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         body_level=_float_value(patch_data, "body_level"),
         body_frequency=_float_value(patch_data, "body_frequency"),
         body_decay=_float_value(patch_data, "body_decay"),
+        character=_float_value(patch_data, "character"),
+        drift=_float_value(patch_data, "drift"),
+        smear=_float_value(patch_data, "smear"),
+        space=_float_value(patch_data, "space"),
         description=str(patch_data["description"]),
     )
 
@@ -214,6 +229,10 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             filter_mode="lowpass",
             pitch_drop=max(patch.pitch_drop, 1.6),
             metallic=0.0,
+            character=_clamp(patch.character, 0.08, 0.35),
+            drift=_clamp(patch.drift, 0.02, 0.22),
+            smear=_clamp(patch.smear, 0.0, 0.2),
+            space=_clamp(patch.space, 0.0, 0.18),
         )
     if patch.engine == "percussion":
         return replace(
@@ -233,6 +252,10 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             body_frequency=_clamp(patch.body_frequency, 120.0, 520.0),
             body_decay=_clamp(patch.body_decay, 0.12, 1.2),
             metallic=_clamp(patch.metallic, 0.0, 0.2),
+            character=_clamp(patch.character, 0.32, 0.85),
+            drift=_clamp(patch.drift, 0.12, 0.55),
+            smear=_clamp(patch.smear, 0.08, 0.45),
+            space=_clamp(patch.space, 0.03, 0.35),
         )
     if patch.engine in {"closed_hat", "open_hat"}:
         return replace(
@@ -256,6 +279,10 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             filter_mode="highpass",
             metallic=_clamp(patch.metallic, 0.55, 1.0),
             body_level=0.0,
+            character=_clamp(patch.character, 0.18, 0.65),
+            drift=_clamp(patch.drift, 0.05, 0.35),
+            smear=_clamp(patch.smear, 0.03, 0.35),
+            space=_clamp(patch.space, 0.04, 0.45),
         )
     return patch
 
