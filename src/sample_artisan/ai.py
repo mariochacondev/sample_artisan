@@ -70,7 +70,64 @@ def plan_sample_from_prompt(prompt: str, model: str | None = None) -> SynthPatch
     if not cleaned_prompt:
         raise ValueError("prompt must not be empty")
 
-    return plan_sample_with_ollama(cleaned_prompt, model=model)
+    try:
+        return plan_sample_with_ollama(cleaned_prompt, model=model)
+    except RuntimeError:
+        return plan_sample_locally(cleaned_prompt)
+
+
+def plan_sample_locally(prompt: str) -> SynthPatch:
+    """Design a basic patch without requiring Ollama."""
+    lowered = prompt.lower()
+    chord = _find_chord_symbol(prompt)
+    engine = _local_engine(lowered, chord)
+    waveform = _local_waveform(lowered, engine)
+    patch = SynthPatch(
+        engine=engine,
+        waveform=waveform,
+        frequency=_local_frequency(lowered, engine, chord),
+        duration=_local_duration(lowered, engine, chord),
+        amplitude=0.72 if chord else 0.68,
+        attack=0.003 if engine in {"kick", "percussion"} else 0.008,
+        decay=_local_decay(lowered, engine, chord),
+        sustain=0.0 if engine in {"kick", "snare", "closed_hat", "open_hat", "percussion"} else 0.25,
+        release=0.08 if not chord else 0.18,
+        noise_mix=_local_noise_mix(lowered, engine),
+        filter_cutoff=_local_filter_cutoff(lowered, engine),
+        filter_mode="highpass" if engine in {"closed_hat", "open_hat"} else "lowpass",
+        drive=0.24 if any(word in lowered for word in ("gritty", "dirty", "distorted", "drive")) else 0.06,
+        pitch_drop=1.8 if engine == "kick" else 0.0,
+        metallic=0.82 if engine in {"closed_hat", "open_hat"} else 0.0,
+        bit_depth=12 if any(word in lowered for word in ("lofi", "bit", "crushed", "dirty")) else 16,
+        chord=chord,
+        osc1_level=0.85 if chord else 1.0,
+        osc1_octave=0,
+        osc1_semitone=0,
+        osc1_fine=-4 if any(word in lowered for word in ("wide", "detuned", "chorus")) else 0,
+        osc2_waveform=_local_osc2_waveform(lowered, waveform),
+        osc2_ratio=1.0,
+        osc2_level=0.38 if chord or any(word in lowered for word in ("wide", "detuned", "thick")) else 0.18,
+        osc2_octave=1 if any(word in lowered for word in ("bright", "shimmer", "wide")) else 0,
+        osc2_semitone=7 if any(word in lowered for word in ("fifth", "power")) else 0,
+        osc2_fine=7 if any(word in lowered for word in ("wide", "detuned", "chorus")) else 0,
+        noise_type="metal" if engine in {"closed_hat", "open_hat"} else "wood" if engine == "percussion" else "white",
+        noise_decay=0.05 if engine == "closed_hat" else 0.5 if engine == "open_hat" else 0.08,
+        filter_resonance=0.18 if chord else 0.08,
+        filter_env=0.18 if engine in {"pluck", "bass", "texture"} else 0.0,
+        pitch_env=0.0,
+        pitch_decay=0.08,
+        transient_level=0.45 if engine in {"kick", "percussion"} else 0.12 if engine == "pluck" else 0.0,
+        transient_tone=3500 if engine == "pluck" else 1500,
+        body_level=0.65 if engine == "percussion" else 0.0,
+        body_frequency=180.0,
+        body_decay=0.35,
+        character=0.28 if any(word in lowered for word in ("organic", "dusty", "vintage", "real")) else 0.08,
+        drift=0.18 if any(word in lowered for word in ("organic", "detuned", "vintage")) else 0.03,
+        smear=0.12 if any(word in lowered for word in ("soft", "smeared", "dusty")) else 0.0,
+        space=0.22 if any(word in lowered for word in ("wide", "space", "reverb", "ambient")) else 0.04,
+        description=f"Local fallback patch for {prompt}",
+    )
+    return _polish_patch(patch)
 
 
 def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch:
@@ -116,7 +173,8 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         method="POST",
     )
     try:
-        with request.urlopen(req, timeout=45) as response:
+        timeout = float(os.getenv("OLLAMA_TIMEOUT", "6"))
+        with request.urlopen(req, timeout=timeout) as response:
             raw = json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
@@ -318,6 +376,129 @@ def _normalize_engine(engine: str) -> str:
 def _normalize_choice(value: str, choices: tuple[str, ...], default: str) -> str:
     normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
     return normalized if normalized in choices else default
+
+
+def _find_chord_symbol(prompt: str) -> str:
+    for token in prompt.replace(",", " ").split():
+        cleaned = token.strip(".,;:!?()[]{}")
+        if not cleaned:
+            continue
+        try:
+            from sample_artisan.synth import _chord_intervals
+
+            if _chord_intervals(cleaned):
+                return cleaned
+        except ValueError:
+            continue
+    return ""
+
+
+def _local_engine(prompt: str, chord: str) -> str:
+    if any(word in prompt for word in ("kick", "808", "bass drum", "sub hit")):
+        return "kick"
+    if any(word in prompt for word in ("snare", "clap", "rim")):
+        return "snare"
+    if any(word in prompt for word in ("closed hat", "closed hihat", "hihat", "hi-hat")):
+        return "closed_hat"
+    if any(word in prompt for word in ("open hat", "cymbal", "crash", "ride")):
+        return "open_hat"
+    if any(word in prompt for word in ("conga", "bongo", "tom", "drum", "percussion")):
+        return "percussion"
+    if any(word in prompt for word in ("bass", "sub", "reese")):
+        return "bass"
+    if chord or any(word in prompt for word in ("pluck", "keys", "chord", "stab")):
+        return "pluck"
+    if any(word in prompt for word in ("pad", "texture", "ambient", "riser", "fx")):
+        return "texture"
+    if "noise" in prompt:
+        return "noise"
+    return "tone"
+
+
+def _local_waveform(prompt: str, engine: str) -> str:
+    if "square" in prompt:
+        return "square"
+    if "triangle" in prompt:
+        return "triangle"
+    if "saw" in prompt or engine in {"bass", "pluck", "texture"}:
+        return "saw"
+    return "sine"
+
+
+def _local_osc2_waveform(prompt: str, waveform: str) -> str:
+    if "triangle" in prompt:
+        return "triangle"
+    if "square" in prompt:
+        return "square"
+    if waveform == "saw":
+        return "triangle"
+    return "saw"
+
+
+def _local_frequency(prompt: str, engine: str, chord: str) -> float:
+    if chord:
+        from sample_artisan.synth import _chord_root_frequency
+
+        return _chord_root_frequency(chord) or 220.0
+    if engine == "kick":
+        return 55.0
+    if engine == "bass":
+        return 110.0 if "sub" not in prompt else 55.0
+    if engine in {"closed_hat", "open_hat"}:
+        return 7800.0
+    if engine == "percussion":
+        return 220.0
+    return 440.0
+
+
+def _local_duration(prompt: str, engine: str, chord: str) -> float:
+    if "long" in prompt or "sustain" in prompt:
+        return 1.6 if chord else 1.2
+    if "short" in prompt or "stab" in prompt:
+        return 0.45 if chord else 0.18
+    if engine == "closed_hat":
+        return 0.08
+    if engine == "open_hat":
+        return 0.65
+    if engine == "kick":
+        return 0.42
+    return 0.75 if chord else 0.4
+
+
+def _local_decay(prompt: str, engine: str, chord: str) -> float:
+    if "short" in prompt or "tight" in prompt:
+        return 0.12
+    if "long" in prompt:
+        return 1.2
+    if chord:
+        return 0.55
+    if engine == "open_hat":
+        return 0.55
+    if engine == "closed_hat":
+        return 0.05
+    return 0.25
+
+
+def _local_noise_mix(prompt: str, engine: str) -> float:
+    if engine in {"closed_hat", "open_hat", "snare", "noise"}:
+        return 0.85
+    if "noisy" in prompt or "dusty" in prompt:
+        return 0.18
+    if engine == "percussion":
+        return 0.12
+    return 0.0
+
+
+def _local_filter_cutoff(prompt: str, engine: str) -> float:
+    if "dark" in prompt or "warm" in prompt:
+        return 2400.0
+    if "bright" in prompt:
+        return 11000.0
+    if engine == "bass":
+        return 1800.0
+    if engine in {"closed_hat", "open_hat"}:
+        return 7000.0
+    return 6500.0
 
 
 def _float_value(data: dict[str, object], key: str) -> float:
