@@ -33,6 +33,24 @@ def test_generate_closed_hat_uses_advanced_engine() -> None:
     assert len(sample) > 1000
 
 
+def test_generate_sample_with_realism_controls() -> None:
+    sample = generate_wave_sample(
+        engine="percussion",
+        frequency=220,
+        duration=0.3,
+        body_level=0.7,
+        body_frequency=180,
+        transient_level=0.4,
+        character=0.65,
+        drift=0.3,
+        smear=0.2,
+        space=0.18,
+    )
+
+    assert sample.startswith(b"RIFF")
+    assert len(sample) > 1000
+
+
 def test_cli_parser_defaults_to_sample_wav() -> None:
     args = build_parser().parse_args([])
 
@@ -120,6 +138,10 @@ def test_percussion_ai_plan_uses_resonant_body() -> None:
     assert polished.body_level >= 0.35
     assert 120 <= polished.body_frequency <= 520
     assert polished.transient_level >= 0.12
+    assert polished.character >= 0.32
+    assert polished.drift >= 0.12
+    assert polished.smear >= 0.08
+    assert polished.space >= 0.03
     assert sample.startswith(b"RIFF")
 
 
