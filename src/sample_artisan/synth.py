@@ -59,6 +59,10 @@ class SynthPatch:
     body_level: float = 0.0
     body_frequency: float = 180.0
     body_decay: float = 0.35
+    character: float = 0.0
+    drift: float = 0.0
+    smear: float = 0.0
+    space: float = 0.0
 
 
 def generate_wave_sample(
@@ -95,6 +99,10 @@ def generate_wave_sample(
     body_level: float = 0.0,
     body_frequency: float = 180.0,
     body_decay: float = 0.35,
+    character: float = 0.0,
+    drift: float = 0.0,
+    smear: float = 0.0,
+    space: float = 0.0,
 ) -> bytes:
     """Generate a mono 16-bit PCM WAV sample."""
     patch = SynthPatch(
@@ -129,6 +137,10 @@ def generate_wave_sample(
         body_level=body_level,
         body_frequency=body_frequency,
         body_decay=body_decay,
+        character=character,
+        drift=drift,
+        smear=smear,
+        space=space,
     )
     return render_patch(patch, sample_rate=sample_rate)
 
@@ -140,12 +152,16 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
     frame_count = max(1, int(sample_rate * patch.duration))
     values: list[float] = []
     phase = 0.0
+    drift_wander = 0.0
 
     for index in range(frame_count):
         t = index / sample_rate
         progress = index / frame_count
+        drift_wander = (drift_wander * 0.992) + rng.uniform(-0.008, 0.008)
         frequency = _frequency_at(patch, t, progress)
-        phase = (phase + frequency / sample_rate) % 1.0
+        frequency *= _drift_multiplier(patch, t, drift_wander)
+        phase_jitter = rng.uniform(-0.00002, 0.00002) * patch.character
+        phase = (phase + frequency / sample_rate + phase_jitter) % 1.0
         tone = _engine_value(patch, phase, t, rng)
         noise = _noise_value(patch, rng)
         noise *= _noise_envelope(t, patch)
@@ -153,12 +169,15 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
         body = _body_value(patch, t)
         mixed = (tone * (1.0 - patch.noise_mix)) + (noise * patch.noise_mix)
         mixed += transient + body
+        mixed *= _character_gain(patch, t, rng)
+        mixed += _surface_noise(patch, t, rng)
         mixed *= _envelope(t, patch)
         mixed = _apply_drive(mixed, patch.drive)
         mixed = _apply_bit_depth(mixed, patch.bit_depth)
         values.append(mixed * patch.amplitude)
 
     values = _apply_filter(values, patch, sample_rate)
+    values = _apply_space(values, patch, sample_rate)
     frames = bytearray()
     for value in values:
         sample = int(_clamp(value, -1.0, 1.0) * 32767)
@@ -274,9 +293,11 @@ def _noise_envelope(t: float, patch: SynthPatch) -> float:
 def _transient_value(patch: SynthPatch, t: float, rng: random.Random) -> float:
     if patch.transient_level <= 0:
         return 0.0
-    click = math.sin(2 * math.pi * patch.transient_tone * t)
-    snap = rng.uniform(-1.0, 1.0) * 0.35
-    return (click + snap) * patch.transient_level * math.exp(-t * 240.0)
+    click_tone = patch.transient_tone * (1.0 - (patch.smear * 0.28))
+    click = math.sin(2 * math.pi * click_tone * t)
+    snap = rng.uniform(-1.0, 1.0) * (0.35 + (patch.character * 0.2))
+    decay_rate = 240.0 / (1.0 + (patch.smear * 5.0))
+    return (click + snap) * patch.transient_level * math.exp(-t * decay_rate)
 
 
 def _body_value(patch: SynthPatch, t: float) -> float:
@@ -284,7 +305,9 @@ def _body_value(patch: SynthPatch, t: float) -> float:
         return 0.0
     fundamental = math.sin(2 * math.pi * patch.body_frequency * t)
     overtone = math.sin(2 * math.pi * patch.body_frequency * 1.52 * t) * 0.35
-    return (fundamental + overtone) * patch.body_level * math.exp(-t / max(patch.body_decay, 0.001))
+    shell = math.sin(2 * math.pi * patch.body_frequency * 2.17 * t) * patch.character * 0.22
+    membrane = math.sin(2 * math.pi * patch.body_frequency * 0.51 * t) * patch.smear * 0.18
+    return (fundamental + overtone + shell + membrane) * patch.body_level * math.exp(-t / max(patch.body_decay, 0.001))
 
 
 def _metallic_cluster(t: float, frequency: float, metallic: float) -> float:
@@ -326,6 +349,51 @@ def _apply_bit_depth(value: float, bit_depth: int) -> float:
         return value
     steps = max(2, 2 ** bit_depth)
     return round(value * steps) / steps
+
+
+def _drift_multiplier(patch: SynthPatch, t: float, wander: float) -> float:
+    if patch.drift <= 0:
+        return 1.0
+    slow = math.sin(2 * math.pi * 1.7 * t)
+    fast = math.sin((2 * math.pi * 4.3 * t) + 0.6) * 0.45
+    cents = patch.drift * ((slow + fast) * 4.0 + (wander * 18.0))
+    return 2 ** (cents / 1200.0)
+
+
+def _character_gain(patch: SynthPatch, t: float, rng: random.Random) -> float:
+    if patch.character <= 0:
+        return 1.0
+    slow = math.sin((2 * math.pi * 2.3 * t) + 0.3) * 0.025
+    micro = rng.uniform(-0.018, 0.018)
+    return max(0.0, 1.0 + (patch.character * (slow + micro)))
+
+
+def _surface_noise(patch: SynthPatch, t: float, rng: random.Random) -> float:
+    if patch.character <= 0:
+        return 0.0
+    amount = patch.character * 0.012
+    if patch.engine in {"percussion", "snare", "closed_hat", "open_hat"}:
+        amount *= 1.8
+    return rng.uniform(-amount, amount) * math.exp(-t / max(patch.duration, 0.001))
+
+
+def _apply_space(values: list[float], patch: SynthPatch, sample_rate: int) -> list[float]:
+    if patch.space <= 0:
+        return values
+    first_delay = max(1, int(sample_rate * (0.011 + (patch.space * 0.018))))
+    second_delay = max(1, int(sample_rate * (0.027 + (patch.space * 0.035))))
+    first_gain = 0.08 + (patch.space * 0.18)
+    second_gain = 0.04 + (patch.space * 0.12)
+    damping = 1.0 - (patch.space * 0.18)
+    spaced = values[:]
+    for index, value in enumerate(values):
+        if index >= first_delay:
+            spaced[index] += values[index - first_delay] * first_gain
+        if index >= second_delay:
+            spaced[index] += values[index - second_delay] * second_gain
+        spaced[index] *= damping
+        spaced[index] += value * (1.0 - damping)
+    return spaced
 
 
 def _apply_filter(values: list[float], patch: SynthPatch, sample_rate: int) -> list[float]:
