@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, fields, replace
 import json
 import os
+import re
 from urllib import error, request
 
 from sample_artisan.synth import (
@@ -95,6 +96,7 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "filter_resonance, filter_env, pitch_env, pitch_decay, transient_level, "
         "transient_tone, body_level, body_frequency, body_decay, character, "
         "drift, smear, space, description. "
+        "All seconds values must be small realistic numbers, usually below 2. "
         "Design like Serum/Vital: two oscillators plus noise, filter, pitch, "
         "transient, body, drive, and space. Osc 1 uses waveform plus "
         "osc1_level/octave/semitone/fine. Osc 2 uses osc2_waveform/ratio/level/"
@@ -165,7 +167,8 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
             f"Ollama returned an empty response from {url} with model {model_name}"
         )
     try:
-        return _polish_patch(_parse_patch(response_text))
+        patch = _parse_patch(response_text)
+        return _polish_patch(_align_patch_to_prompt(prompt, patch))
     except (json.JSONDecodeError, ValueError) as exc:
         snippet = response_text[:240].replace("\n", " ")
         raise RuntimeError(
@@ -190,7 +193,7 @@ def _parse_patch(raw_text: str) -> SynthPatch:
     patch_data["filter_mode"] = _normalize_choice(
         str(patch_data["filter_mode"]), ("lowpass", "highpass"), "lowpass"
     )
-    return SynthPatch(
+    patch = SynthPatch(
         engine=patch_data["engine"],
         waveform=patch_data["waveform"],
         frequency=_float_value(patch_data, "frequency"),
@@ -235,6 +238,36 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         space=_float_value(patch_data, "space"),
         description=str(patch_data["description"]),
     )
+    return _sanitize_patch_ranges(patch)
+
+
+def _align_patch_to_prompt(prompt: str, patch: SynthPatch) -> SynthPatch:
+    text = _prompt_text(prompt)
+    chord = _chord_symbol_from_prompt(prompt)
+    if chord:
+        patch = replace(patch, chord=chord)
+        if patch.engine in {"tone", "noise", "snare", "kick", "closed_hat", "open_hat", "percussion"}:
+            patch = replace(patch, engine="pluck")
+        return patch
+
+    patch = replace(patch, chord="")
+    if _has_prompt_word(text, {"clap", "calp", "snare", "rimshot"}):
+        return replace(patch, engine="snare", description=patch.description or "clap")
+    if _has_prompt_word(text, {"kick", "bd", "bassdrum"}) or "bass drum" in text:
+        return replace(patch, engine="kick", description=patch.description or "kick")
+    if _has_prompt_word(text, {"hat", "hihat", "hi-hat", "closedhat"}) or "closed hat" in text:
+        return replace(patch, engine="closed_hat", description=patch.description or "closed hat")
+    if _has_prompt_word(text, {"cymbal", "crash", "ride", "openhat"}) or "open hat" in text:
+        return replace(patch, engine="open_hat", description=patch.description or "cymbal")
+    if _has_prompt_word(text, {"conga", "bongo", "tom", "percussion"}) or "hand drum" in text:
+        return replace(patch, engine="percussion", description=patch.description or "percussion")
+    if _has_prompt_word(text, {"bass", "sub", "808"}):
+        return replace(patch, engine="bass", description=patch.description or "bass")
+    if _has_prompt_word(text, {"pluck", "mallet", "kalimba"}):
+        return replace(patch, engine="pluck", description=patch.description or "pluck")
+    if _has_prompt_word(text, {"texture", "ambience", "ambient", "riser", "fx"}):
+        return replace(patch, engine="texture", description=patch.description or "texture")
+    return patch
 
 
 def _polish_patch(patch: SynthPatch) -> SynthPatch:
@@ -260,6 +293,30 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             drift=_clamp(patch.drift, 0.02, 0.22),
             smear=_clamp(patch.smear, 0.0, 0.2),
             space=_clamp(patch.space, 0.0, 0.18),
+        )
+    if patch.engine == "snare":
+        return replace(
+            patch,
+            chord="",
+            waveform="square" if patch.waveform == "sine" else patch.waveform,
+            frequency=_clamp(patch.frequency, 160.0, 320.0),
+            duration=_clamp(patch.duration, 0.08, 0.55),
+            attack=_clamp(patch.attack, 0.0, 0.006),
+            decay=_clamp(patch.decay, 0.06, 0.32),
+            sustain=0.0,
+            release=_clamp(patch.release, 0.02, 0.12),
+            noise_mix=_clamp(patch.noise_mix, 0.55, 0.95),
+            noise_decay=_clamp(patch.noise_decay, 0.025, 0.22),
+            filter_cutoff=_clamp(patch.filter_cutoff, 1_200.0, 7_500.0),
+            filter_mode="highpass",
+            drive=_clamp(patch.drive, 0.05, 0.45),
+            metallic=_clamp(patch.metallic, 0.0, 0.35),
+            transient_level=_clamp(patch.transient_level, 0.25, 0.9),
+            transient_tone=_clamp(patch.transient_tone, 1_200.0, 8_000.0),
+            body_level=_clamp(patch.body_level, 0.0, 0.25),
+            body_decay=_clamp(patch.body_decay, 0.03, 0.28),
+            smear=_clamp(patch.smear, 0.0, 0.45),
+            space=_clamp(patch.space, 0.0, 0.35),
         )
     if patch.engine == "percussion":
         return replace(
@@ -370,6 +427,68 @@ def _normalize_chord(value: str) -> str:
     if not chord or chord.lower() in {"none", "null", "false", "n/a", "no chord"}:
         return ""
     return chord if _chord_intervals(chord) is not None else ""
+
+
+def _sanitize_patch_ranges(patch: SynthPatch) -> SynthPatch:
+    return replace(
+        patch,
+        frequency=_clamp(patch.frequency, 40.0, 4_000.0),
+        duration=_clamp(patch.duration, 0.03, 6.0),
+        amplitude=_clamp(patch.amplitude, 0.05, 1.0),
+        attack=_clamp(patch.attack, 0.0, 2.0),
+        decay=_clamp(patch.decay, 0.01, 5.0),
+        sustain=_clamp(patch.sustain, 0.0, 1.0),
+        release=_clamp(patch.release, 0.0, 2.0),
+        noise_mix=_clamp(patch.noise_mix, 0.0, 1.0),
+        filter_cutoff=_clamp(patch.filter_cutoff, 80.0, 18_000.0),
+        drive=_clamp(patch.drive, 0.0, 1.0),
+        pitch_drop=_clamp(patch.pitch_drop, 0.0, 4.0),
+        metallic=_clamp(patch.metallic, 0.0, 1.0),
+        bit_depth=int(_clamp(patch.bit_depth, 4, 16)),
+        osc1_level=_clamp(patch.osc1_level, 0.0, 1.0),
+        osc1_octave=int(_clamp(patch.osc1_octave, -4, 4)),
+        osc1_semitone=int(_clamp(patch.osc1_semitone, -24, 24)),
+        osc1_fine=_clamp(patch.osc1_fine, -100.0, 100.0),
+        osc2_ratio=_clamp(patch.osc2_ratio, 0.25, 8.0),
+        osc2_level=_clamp(patch.osc2_level, 0.0, 1.0),
+        osc2_octave=int(_clamp(patch.osc2_octave, -4, 4)),
+        osc2_semitone=int(_clamp(patch.osc2_semitone, -24, 24)),
+        osc2_fine=_clamp(patch.osc2_fine, -100.0, 100.0),
+        noise_decay=_clamp(patch.noise_decay, 0.005, 3.0),
+        filter_resonance=_clamp(patch.filter_resonance, 0.0, 1.0),
+        filter_env=_clamp(patch.filter_env, -1.0, 1.0),
+        pitch_env=_clamp(patch.pitch_env, -1200.0, 1200.0),
+        pitch_decay=_clamp(patch.pitch_decay, 0.005, 2.0),
+        transient_level=_clamp(patch.transient_level, 0.0, 1.0),
+        transient_tone=_clamp(patch.transient_tone, 80.0, 12_000.0),
+        body_level=_clamp(patch.body_level, 0.0, 1.0),
+        body_frequency=_clamp(patch.body_frequency, 35.0, 2_000.0),
+        body_decay=_clamp(patch.body_decay, 0.02, 4.0),
+        character=_clamp(patch.character, 0.0, 1.0),
+        drift=_clamp(patch.drift, 0.0, 1.0),
+        smear=_clamp(patch.smear, 0.0, 1.0),
+        space=_clamp(patch.space, 0.0, 1.0),
+    )
+
+
+def _prompt_text(prompt: str) -> str:
+    return re.sub(r"[^a-z0-9#+ -]+", " ", prompt.lower())
+
+
+def _has_prompt_word(text: str, words: set[str]) -> bool:
+    tokens = set(text.replace("-", " ").split())
+    return bool(tokens & words)
+
+
+def _chord_symbol_from_prompt(prompt: str) -> str:
+    chord_pattern = re.compile(
+        r"\b([A-Ga-g][#bB]?(?:maj|min|m|sus|dim|aug|\+)?(?:5|6|7|9|11|13)?)\b"
+    )
+    for match in chord_pattern.finditer(prompt):
+        symbol = match.group(1)
+        if _chord_intervals(symbol) is not None:
+            return symbol
+    return ""
 
 
 def _float_value(data: dict[str, object], key: str) -> float:
