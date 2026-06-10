@@ -108,6 +108,46 @@ def test_parse_ai_sample_plan() -> None:
     assert plan.osc2_fine == -5
 
 
+def test_ai_clap_prompt_does_not_become_chord() -> None:
+    plan = _parse_patch(
+        '{"engine":"clap","waveform":"square","frequency":240,'
+        '"duration":0.18,"amplitude":0.8,"attack":0.001,"decay":0.12,'
+        '"sustain":0,"release":0.02,"noise_mix":0.7,'
+        '"filter_cutoff":3500,"filter_mode":"highpass","drive":0.2,'
+        '"pitch_drop":0,"metallic":0.1,"bit_depth":12,'
+        '"chord":"clap","description":"short dry clap"}'
+    )
+
+    polished = _polish_patch(plan)
+    sample = generate_wave_sample(
+        engine=polished.engine,
+        waveform=polished.waveform,
+        frequency=polished.frequency,
+        duration=polished.duration,
+        amplitude=polished.amplitude,
+        noise_mix=polished.noise_mix,
+        filter_cutoff=polished.filter_cutoff,
+        filter_mode=polished.filter_mode,
+        chord=polished.chord,
+    )
+
+    assert plan.engine == "snare"
+    assert plan.chord == ""
+    assert polished.chord == ""
+    assert sample.startswith(b"RIFF")
+
+
+def test_ai_typo_calp_prompt_normalizes_to_snare() -> None:
+    plan = _parse_patch(
+        '{"engine":"calp","waveform":"square","frequency":240,'
+        '"duration":0.18,"noise_mix":0.7,"chord":"calp",'
+        '"description":"typo clap"}'
+    )
+
+    assert plan.engine == "snare"
+    assert plan.chord == ""
+
+
 def test_kick_ai_plan_is_polished_into_sub_range() -> None:
     plan = _parse_patch(
         '{"engine":"kick","waveform":"square","frequency":236,'
