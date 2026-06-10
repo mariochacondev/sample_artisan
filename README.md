@@ -25,6 +25,10 @@ http://127.0.0.1:8000
 
 The interface can generate real chord symbols such as `Am9`, `Cmaj7`, `Dm11`, and `G13`, and includes Osc 1/Osc 2 controls for waveform, level, octave, semitone, and fine tuning. Osc 2 also supports ratio tuning. No LFO is included yet.
 
+## Synthesis roadmap
+
+The project is moving toward a deeper modular synth/sampler-style engine so Ollama can do better sound design instead of choosing from shallow preset-like engines. See [`docs/synthesis-roadmap.md`](docs/synthesis-roadmap.md) for the planned patch architecture, module priorities, instrument families, UI direction, and testing approach.
+
 ## Ollama prompt setup
 
 The AI prompt path intentionally uses Ollama only. Make sure Ollama is running and the model exists before using the prompt field:
