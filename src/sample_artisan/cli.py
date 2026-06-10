@@ -7,7 +7,7 @@ from pathlib import Path
 
 from sample_artisan.ai import plan_sample_from_prompt
 from sample_artisan import generate_wave_sample
-from sample_artisan.synth import render_patch
+from sample_artisan.synth import ENGINES, render_patch
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--engine",
-        choices=["tone", "kick", "snare", "closed_hat", "open_hat", "noise"],
+        choices=list(ENGINES),
         default="tone",
         help="Synthesis engine to use.",
     )
