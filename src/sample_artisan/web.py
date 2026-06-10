@@ -204,7 +204,7 @@ INDEX_HTML = """<!doctype html>
     const fieldDefs = [
       ["mainControls","prompt","AI prompt","textarea","wide detuned Am9 pluck, gritty bass, dry conga"],
       ["mainControls","chord","Chord","text","Am9, Cmaj7, Dm11, G13"],
-      ["mainControls","engine","Sound type","select",[["tone","Tone"],["kick","Kick"],["snare","Snare"],["closed_hat","Closed hat"],["open_hat","Open hat / cymbal"],["noise","Noise"],["percussion","Percussion"],["bass","Bass"],["pluck","Pluck"],["texture","Texture"]]],
+      ["mainControls","engine","Sound type","select",[["tone","Tone"],["kick","Kick"],["snare","Snare"],["closed_hat","Closed hat"],["open_hat","Open hat / cymbal"],["noise","Noise"],["percussion","Percussion"],["bass","Bass"],["keys","Keys / piano"],["pluck","Pluck"],["texture","Texture"]]],
       ["mainControls","waveform","Osc 1 waveform","select",[["sine","Sine"],["square","Square"],["saw","Saw"],["triangle","Triangle"]]],
       ["mainControls","frequency","Frequency","range",[80,1200,1,440,"Hz"]],
       ["mainControls","duration","Duration","range",[0.03,3,0.01,1,"s"]],
