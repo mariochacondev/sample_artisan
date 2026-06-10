@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 import json
 import os
 from urllib import error, request
@@ -11,6 +11,9 @@ from sample_artisan.synth import ENGINES, NOISE_TYPES, WAVEFORMS, SynthPatch
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
+DEFAULT_OLLAMA_TIMEOUT = 120
+DEFAULT_OLLAMA_NUM_PREDICT = 700
+DEFAULT_OLLAMA_KEEP_ALIVE = "10m"
 
 PATCH_SCHEMA = {
     "type": "object",
@@ -32,9 +35,17 @@ PATCH_SCHEMA = {
         "pitch_drop": {"type": "number", "minimum": 0, "maximum": 4},
         "metallic": {"type": "number", "minimum": 0, "maximum": 1},
         "bit_depth": {"type": "integer", "minimum": 4, "maximum": 16},
+        "chord": {"type": "string"},
+        "osc1_level": {"type": "number", "minimum": 0, "maximum": 1},
+        "osc1_octave": {"type": "integer", "minimum": -4, "maximum": 4},
+        "osc1_semitone": {"type": "integer", "minimum": -24, "maximum": 24},
+        "osc1_fine": {"type": "number", "minimum": -100, "maximum": 100},
         "osc2_waveform": {"type": "string", "enum": list(WAVEFORMS)},
         "osc2_ratio": {"type": "number", "minimum": 0.25, "maximum": 8},
         "osc2_level": {"type": "number", "minimum": 0, "maximum": 1},
+        "osc2_octave": {"type": "integer", "minimum": -4, "maximum": 4},
+        "osc2_semitone": {"type": "integer", "minimum": -24, "maximum": 24},
+        "osc2_fine": {"type": "number", "minimum": -100, "maximum": 100},
         "noise_type": {"type": "string", "enum": list(NOISE_TYPES)},
         "noise_decay": {"type": "number", "minimum": 0.005, "maximum": 3},
         "filter_resonance": {"type": "number", "minimum": 0, "maximum": 1},
@@ -52,43 +63,7 @@ PATCH_SCHEMA = {
         "space": {"type": "number", "minimum": 0, "maximum": 1},
         "description": {"type": "string"},
     },
-    "required": [
-        "engine",
-        "waveform",
-        "frequency",
-        "duration",
-        "amplitude",
-        "attack",
-        "decay",
-        "sustain",
-        "release",
-        "noise_mix",
-        "filter_cutoff",
-        "filter_mode",
-        "drive",
-        "pitch_drop",
-        "metallic",
-        "bit_depth",
-        "osc2_waveform",
-        "osc2_ratio",
-        "osc2_level",
-        "noise_type",
-        "noise_decay",
-        "filter_resonance",
-        "filter_env",
-        "pitch_env",
-        "pitch_decay",
-        "transient_level",
-        "transient_tone",
-        "body_level",
-        "body_frequency",
-        "body_decay",
-        "character",
-        "drift",
-        "smear",
-        "space",
-        "description",
-    ],
+    "required": [field.name for field in fields(SynthPatch) if field.name != "seed"],
 }
 
 
@@ -104,57 +79,88 @@ def plan_sample_from_prompt(prompt: str, model: str | None = None) -> SynthPatch
 def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch:
     """Ask a local Ollama model to design a synth patch."""
     system = (
-        "You are designing one-shot synthesizer patches for a Python audio tool. "
-        "Return only one JSON object. Think like a Serum/Vital sound "
-        "designer building a one-shot patch from oscillators, noise, transient, "
-        "filter, pitch envelope, resonant body, and realism controls. Use broad engines instead "
-        "of literal instrument names: conga, bongo, tom, wood block, and hand "
-        "drum -> percussion with body_level, body_frequency, transient_level, "
-        "wood noise, and short-to-medium decay; kick or bass drum -> kick; "
-        "bass or sub -> bass; pluck, mallet, kalimba -> pluck; ambience, riser, "
-        "fx -> texture; snare/clap/rimshot -> snare; hihats -> closed_hat or "
-        "open_hat; cymbal, crash, and ride -> open_hat with metal noise, highpass "
-        "filtering, high metallic amount, and longer decay. Never choose snare "
-        "for conga, kick, or cymbal. Tune body_frequency "
-        "to the perceived note/body of the sound. Keep description concise. "
-        "Use these keys when possible: engine, waveform, frequency, duration, "
-        "amplitude, attack, decay, sustain, release, noise_mix, filter_cutoff, "
-        "filter_mode, drive, pitch_drop, metallic, bit_depth, osc2_waveform, "
-        "osc2_ratio, osc2_level, noise_type, noise_decay, filter_resonance, "
-        "filter_env, pitch_env, pitch_decay, transient_level, transient_tone, "
-        "body_level, body_frequency, body_decay, character, drift, smear, "
-        "space, description. Use character, drift, smear, and space to make "
-        "organic, acoustic, dusty, realistic, live, imperfect, or vintage sounds "
-        "less robotic; keep them low for clean synthetic sounds."
+        "Return one compact JSON object for a one-shot synth patch. "
+        "Omit default or unnecessary keys. Use only these keys when needed: "
+        "engine, waveform, frequency, duration, amplitude, attack, decay, "
+        "sustain, release, noise_mix, filter_cutoff, filter_mode, drive, "
+        "pitch_drop, metallic, bit_depth, chord, osc1_level, osc1_octave, "
+        "osc1_semitone, osc1_fine, osc2_waveform, osc2_ratio, osc2_level, "
+        "osc2_octave, osc2_semitone, osc2_fine, noise_type, noise_decay, "
+        "filter_resonance, filter_env, pitch_env, pitch_decay, transient_level, "
+        "transient_tone, body_level, body_frequency, body_decay, character, "
+        "drift, smear, space, description. "
+        "Design like Serum/Vital: two oscillators plus noise, filter, pitch, "
+        "transient, body, drive, and space. Osc 1 uses waveform plus "
+        "osc1_level/octave/semitone/fine. Osc 2 uses osc2_waveform/ratio/level/"
+        "octave/semitone/fine. For chord prompts such as Am9, Cmaj7, Dm11, "
+        "or G13, set chord exactly to that symbol so the renderer plays the "
+        "real chord tones. Leave chord empty for single notes or drums. "
+        "Map conga/bongo/tom/hand drum to percussion, kick/bass drum to kick, "
+        "bass/sub to bass, pluck/mallet/kalimba to pluck, ambience/riser/fx "
+        "to texture, snare/clap/rimshot to snare, cymbal/crash/ride/open hat "
+        "to open_hat, and closed hat/hihat to closed_hat."
     )
+    model_name = model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    url = os.getenv("OLLAMA_URL", OLLAMA_URL)
+    timeout = float(os.getenv("OLLAMA_TIMEOUT", str(DEFAULT_OLLAMA_TIMEOUT)))
+    num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", str(DEFAULT_OLLAMA_NUM_PREDICT)))
+    keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", DEFAULT_OLLAMA_KEEP_ALIVE)
     body = {
-        "model": model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
+        "model": model_name,
         "prompt": f"{system}\n\nSound prompt: {prompt}",
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0.1},
+        "keep_alive": keep_alive,
+        "options": {"temperature": 0.1, "num_predict": num_predict},
     }
     payload = json.dumps(body).encode("utf-8")
     req = request.Request(
-        os.getenv("OLLAMA_URL", OLLAMA_URL),
+        url,
         data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with request.urlopen(req, timeout=45) as response:
-            raw = json.loads(response.read().decode("utf-8"))
+        with request.urlopen(req, timeout=timeout) as response:
+            response_body = response.read().decode("utf-8")
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        message = detail or str(exc)
-        raise RuntimeError(f"Ollama request failed: {message}") from exc
-    except (OSError, error.URLError, json.JSONDecodeError) as exc:
-        raise RuntimeError("Ollama is not available") from exc
+        message = detail or exc.reason or str(exc)
+        raise RuntimeError(
+            f"Ollama request failed at {url} with model {model_name}: "
+            f"HTTP {exc.code} {message}"
+        ) from exc
+    except TimeoutError as exc:
+        raise RuntimeError(
+            f"Ollama timed out after {timeout:g}s at {url} "
+            f"with model {model_name}"
+        ) from exc
+    except (OSError, error.URLError) as exc:
+        detail = getattr(exc, "reason", exc)
+        raise RuntimeError(
+            f"Ollama is not reachable at {url} with model {model_name}: {detail}"
+        ) from exc
+
+    try:
+        raw = json.loads(response_body)
+    except json.JSONDecodeError as exc:
+        snippet = response_body[:240].replace("\n", " ")
+        raise RuntimeError(
+            f"Ollama returned non-JSON from {url} with model {model_name}: {snippet}"
+        ) from exc
 
     response_text = str(raw.get("response", "")).strip()
     if not response_text:
-        raise RuntimeError("Ollama returned an empty response")
-    return _polish_patch(_parse_patch(response_text))
+        raise RuntimeError(
+            f"Ollama returned an empty response from {url} with model {model_name}"
+        )
+    try:
+        return _polish_patch(_parse_patch(response_text))
+    except (json.JSONDecodeError, ValueError) as exc:
+        snippet = response_text[:240].replace("\n", " ")
+        raise RuntimeError(
+            f"Ollama returned an invalid patch JSON with model {model_name}: {snippet}"
+        ) from exc
 
 
 def _parse_patch(raw_text: str) -> SynthPatch:
@@ -191,9 +197,17 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         pitch_drop=_float_value(patch_data, "pitch_drop"),
         metallic=_float_value(patch_data, "metallic"),
         bit_depth=_int_value(patch_data, "bit_depth"),
+        chord=str(patch_data["chord"]).strip(),
+        osc1_level=_float_value(patch_data, "osc1_level"),
+        osc1_octave=_int_value(patch_data, "osc1_octave"),
+        osc1_semitone=_int_value(patch_data, "osc1_semitone"),
+        osc1_fine=_float_value(patch_data, "osc1_fine"),
         osc2_waveform=patch_data["osc2_waveform"],
         osc2_ratio=_float_value(patch_data, "osc2_ratio"),
         osc2_level=_float_value(patch_data, "osc2_level"),
+        osc2_octave=_int_value(patch_data, "osc2_octave"),
+        osc2_semitone=_int_value(patch_data, "osc2_semitone"),
+        osc2_fine=_float_value(patch_data, "osc2_fine"),
         noise_type=patch_data["noise_type"],
         noise_decay=_float_value(patch_data, "noise_decay"),
         filter_resonance=_float_value(patch_data, "filter_resonance"),
@@ -218,6 +232,7 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
         return replace(
             patch,
             waveform="sine",
+            chord="",
             frequency=_clamp(patch.frequency, 35.0, 90.0),
             duration=_clamp(patch.duration, 0.18, 0.85),
             attack=_clamp(patch.attack, 0.001, 0.008),
@@ -237,6 +252,7 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
     if patch.engine == "percussion":
         return replace(
             patch,
+            chord="",
             frequency=_clamp(patch.frequency, 120.0, 520.0),
             duration=_clamp(patch.duration, 0.16, 1.4),
             attack=_clamp(patch.attack, 0.001, 0.015),
@@ -260,6 +276,7 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
     if patch.engine in {"closed_hat", "open_hat"}:
         return replace(
             patch,
+            chord="",
             frequency=_clamp(patch.frequency, 2_500.0, 11_000.0),
             duration=_clamp(
                 patch.duration,
@@ -339,7 +356,7 @@ def _float_value(data: dict[str, object], key: str) -> float:
     default = getattr(SynthPatch(), key)
     try:
         return float(data[key])
-    except (TypeError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return float(default)
 
 
@@ -347,7 +364,7 @@ def _int_value(data: dict[str, object], key: str) -> int:
     default = getattr(SynthPatch(), key)
     try:
         return int(float(data[key]))
-    except (TypeError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return int(default)
 
 

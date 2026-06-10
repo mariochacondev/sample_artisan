@@ -65,9 +65,17 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
                 pitch_drop=_float_param(params, "pitch_drop", 0.0),
                 metallic=_float_param(params, "metallic", 0.0),
                 bit_depth=int(_float_param(params, "bit_depth", 16)),
+                chord=_text_param(params, "chord", ""),
+                osc1_level=_float_param(params, "osc1_level", 1.0),
+                osc1_octave=int(_float_param(params, "osc1_octave", 0)),
+                osc1_semitone=int(_float_param(params, "osc1_semitone", 0)),
+                osc1_fine=_float_param(params, "osc1_fine", 0.0),
                 osc2_waveform=_text_param(params, "osc2_waveform", "sine"),
                 osc2_ratio=_float_param(params, "osc2_ratio", 1.0),
                 osc2_level=_float_param(params, "osc2_level", 0.0),
+                osc2_octave=int(_float_param(params, "osc2_octave", 0)),
+                osc2_semitone=int(_float_param(params, "osc2_semitone", 0)),
+                osc2_fine=_float_param(params, "osc2_fine", 0.0),
                 noise_type=_text_param(params, "noise_type", "white"),
                 noise_decay=_float_param(params, "noise_decay", 0.08),
                 filter_resonance=_float_param(params, "filter_resonance", 0.0),
@@ -139,23 +147,21 @@ INDEX_HTML = """<!doctype html>
   <style>
     :root { --ink:#1b1d1f; --muted:#62666d; --line:#d8dce2; --surface:#f7f8fa; --accent:#2f7d6d; --accent-strong:#225f53; }
     * { box-sizing:border-box; }
-    body { margin:0; height:100svh; overflow:hidden; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#fff; }
-    main { display:grid; grid-template-rows:minmax(280px, 43svh) minmax(0, 1fr); height:100svh; min-width:0; overflow:hidden; }
-    .parameters { display:grid; grid-template-rows:auto minmax(0, 1fr); gap:14px; min-height:0; padding:20px 24px; border-bottom:1px solid var(--line); background:var(--surface); }
-    .workspace { display:grid; grid-template-rows:auto minmax(0, 1fr) auto auto; gap:14px; min-height:0; min-width:0; padding:20px 24px; }
-    .panel-head { display:flex; justify-content:space-between; gap:18px; align-items:end; }
+    body { margin:0; min-height:100svh; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#fff; }
+    main { display:grid; grid-template-rows:auto minmax(360px, 1fr); min-height:100svh; }
+    .parameters { padding:20px 24px; border-bottom:1px solid var(--line); background:var(--surface); }
+    .workspace { display:grid; grid-template-rows:auto minmax(220px, 1fr) auto auto; gap:14px; min-width:0; padding:20px 24px; }
+    .panel-head { display:flex; justify-content:space-between; gap:18px; align-items:end; margin-bottom:14px; }
     .panel-head button { width:auto; min-width:180px; margin:0; }
-    .controls-scroll { min-height:0; overflow:auto; padding-right:4px; }
     .control-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px 14px; align-items:end; }
     .prompt-field { grid-column:span 2; }
-    .field { min-width:0; }
     h1 { margin:0 0 8px; font-size:28px; line-height:1.1; letter-spacing:0; }
     p { margin:0; color:var(--muted); line-height:1.5; }
     label { display:block; margin:0 0 6px; color:#30343a; font-size:13px; font-weight:700; }
-    input[type="range"], select, textarea, button { width:100%; font:inherit; }
+    input, select, textarea, button { width:100%; font:inherit; }
     input[type="range"] { accent-color:var(--accent); }
-    select, textarea { border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:9px 10px; }
-    button { height:44px; margin-top:24px; border:0; border-radius:6px; background:var(--accent); color:#fff; font-weight:800; cursor:pointer; }
+    input[type="text"], select, textarea { border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); padding:9px 10px; }
+    button { height:44px; border:0; border-radius:6px; background:var(--accent); color:#fff; font-weight:800; cursor:pointer; }
     button:hover { background:var(--accent-strong); }
     button:disabled { cursor:wait; opacity:.72; }
     details { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
@@ -164,14 +170,12 @@ INDEX_HTML = """<!doctype html>
     .topline { display:flex; justify-content:space-between; gap:16px; align-items:end; }
     .stats { display:flex; gap:16px; color:var(--muted); font-size:13px; white-space:nowrap; }
     .waveform { position:relative; width:100%; min-height:0; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; overflow:hidden; }
-    canvas { display:block; width:100%; height:100%; min-height:0; }
+    canvas { display:block; width:100%; height:100%; min-height:220px; }
     audio { width:100%; }
     .loader { position:absolute; inset:0; display:none; place-items:center; background:rgba(251,252,253,.78); color:var(--accent-strong); font-size:14px; font-weight:800; z-index:2; }
-    .loader::before { content:""; width:24px; height:24px; margin-right:10px; border:3px solid rgba(47,125,109,.18); border-top-color:var(--accent); border-radius:999px; animation:spin 800ms linear infinite; }
     .is-loading .loader { display:flex; }
-    .patch-details { margin:0; max-height:88px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--muted); padding:10px 12px; font:12px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space:pre-wrap; }
-    @keyframes spin { to { transform:rotate(360deg); } }
-    @media (max-width:780px) { main { grid-template-rows:minmax(330px, 50svh) minmax(0, 1fr); } .parameters, .workspace { padding:18px; } .panel-head { align-items:stretch; flex-direction:column; } .panel-head button { width:100%; } .prompt-field { grid-column:1 / -1; } .topline { align-items:start; flex-direction:column; } }
+    .patch-details { margin:0; max-height:110px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--muted); padding:10px 12px; font:12px/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space:pre-wrap; }
+    @media (max-width:780px) { .parameters, .workspace { padding:18px; } .panel-head, .topline { align-items:stretch; flex-direction:column; } .panel-head button { width:100%; } .prompt-field { grid-column:1 / -1; } }
   </style>
 </head>
 <body>
@@ -184,52 +188,10 @@ INDEX_HTML = """<!doctype html>
         </div>
         <button id="generate">Generate sample</button>
       </div>
-
-      <div class="controls-scroll">
-        <div class="control-grid">
-          <div class="field prompt-field"><label for="prompt">AI prompt</label><textarea id="prompt" rows="3" placeholder="closed hi-hat, cymbal, conga, sub kick, gritty bass"></textarea></div>
-          <div class="field"><label for="engine">Sound type</label><select id="engine"><option value="tone">Tone</option><option value="kick">Kick</option><option value="snare">Snare</option><option value="closed_hat">Closed hat</option><option value="open_hat">Open hat / cymbal</option><option value="noise">Noise</option><option value="percussion">Percussion</option><option value="bass">Bass</option><option value="pluck">Pluck</option><option value="texture">Texture</option></select></div>
-          <div class="field"><label for="waveform">Waveform</label><select id="waveform"><option value="sine">Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option></select></div>
-          <div class="field"><label for="frequency">Frequency <span class="value" id="frequencyValue"></span></label><input id="frequency" type="range" min="80" max="1200" value="440"></div>
-          <div class="field"><label for="duration">Duration <span class="value" id="durationValue"></span></label><input id="duration" type="range" min="0.03" max="3" step="0.01" value="1"></div>
-          <div class="field"><label for="amplitude">Amplitude <span class="value" id="amplitudeValue"></span></label><input id="amplitude" type="range" min="0.1" max="1" step="0.01" value="0.65"></div>
-          <div class="field"><label for="attack">Attack <span class="value" id="attackValue"></span></label><input id="attack" type="range" min="0" max="0.5" step="0.001" value="0.005"></div>
-          <div class="field"><label for="decay">Decay <span class="value" id="decayValue"></span></label><input id="decay" type="range" min="0.01" max="2" step="0.01" value="0.25"></div>
-          <div class="field"><label for="noiseMix">Noise <span class="value" id="noiseMixValue"></span></label><input id="noiseMix" type="range" min="0" max="1" step="0.01" value="0"></div>
-          <div class="field"><label for="filterCutoff">Filter <span class="value" id="filterCutoffValue"></span></label><input id="filterCutoff" type="range" min="80" max="18000" step="10" value="12000"></div>
-          <div class="field"><label for="filterMode">Filter mode</label><select id="filterMode"><option value="lowpass">Lowpass</option><option value="highpass">Highpass</option></select></div>
-          <div class="field"><label for="drive">Drive <span class="value" id="driveValue"></span></label><input id="drive" type="range" min="0" max="1" step="0.01" value="0"></div>
-          <div class="field"><label for="pitchDrop">Pitch drop <span class="value" id="pitchDropValue"></span></label><input id="pitchDrop" type="range" min="0" max="4" step="0.01" value="0"></div>
-          <div class="field"><label for="metallic">Metallic <span class="value" id="metallicValue"></span></label><input id="metallic" type="range" min="0" max="1" step="0.01" value="0"></div>
-          <div class="field"><label for="bitDepth">Bit depth <span class="value" id="bitDepthValue"></span></label><input id="bitDepth" type="range" min="4" max="16" step="1" value="16"></div>
-        </div>
-
-        <details open>
-          <summary>Advanced sound design</summary>
-          <div class="control-grid">
-            <div class="field"><label for="osc2Waveform">Oscillator 2 waveform</label><select id="osc2Waveform"><option value="sine">Sine</option><option value="square">Square</option><option value="saw">Saw</option><option value="triangle">Triangle</option></select></div>
-            <div class="field"><label for="osc2Ratio">Oscillator 2 ratio <span class="value" id="osc2RatioValue"></span></label><input id="osc2Ratio" type="range" min="0.25" max="8" step="0.01" value="1"></div>
-            <div class="field"><label for="osc2Level">Oscillator 2 level <span class="value" id="osc2LevelValue"></span></label><input id="osc2Level" type="range" min="0" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="noiseType">Noise type</label><select id="noiseType"><option value="white">White</option><option value="dark">Dark</option><option value="bright">Bright</option><option value="wood">Wood</option><option value="metal">Metal</option></select></div>
-            <div class="field"><label for="noiseDecay">Noise decay <span class="value" id="noiseDecayValue"></span></label><input id="noiseDecay" type="range" min="0.005" max="3" step="0.005" value="0.08"></div>
-            <div class="field"><label for="filterResonance">Filter resonance <span class="value" id="filterResonanceValue"></span></label><input id="filterResonance" type="range" min="0" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="filterEnv">Filter envelope <span class="value" id="filterEnvValue"></span></label><input id="filterEnv" type="range" min="-1" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="pitchEnv">Pitch envelope <span class="value" id="pitchEnvValue"></span></label><input id="pitchEnv" type="range" min="-1200" max="1200" step="1" value="0"></div>
-            <div class="field"><label for="pitchDecay">Pitch decay <span class="value" id="pitchDecayValue"></span></label><input id="pitchDecay" type="range" min="0.005" max="2" step="0.005" value="0.08"></div>
-            <div class="field"><label for="transientLevel">Transient level <span class="value" id="transientLevelValue"></span></label><input id="transientLevel" type="range" min="0" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="transientTone">Transient tone <span class="value" id="transientToneValue"></span></label><input id="transientTone" type="range" min="80" max="12000" step="10" value="1500"></div>
-            <div class="field"><label for="bodyLevel">Body level <span class="value" id="bodyLevelValue"></span></label><input id="bodyLevel" type="range" min="0" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="bodyFrequency">Body frequency <span class="value" id="bodyFrequencyValue"></span></label><input id="bodyFrequency" type="range" min="35" max="2000" step="1" value="180"></div>
-            <div class="field"><label for="bodyDecay">Body decay <span class="value" id="bodyDecayValue"></span></label><input id="bodyDecay" type="range" min="0.02" max="4" step="0.01" value="0.35"></div>
-            <div class="field"><label for="character">Character <span class="value" id="characterValue"></span></label><input id="character" type="range" min="0" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="drift">Drift <span class="value" id="driftValue"></span></label><input id="drift" type="range" min="0" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="smear">Smear <span class="value" id="smearValue"></span></label><input id="smear" type="range" min="0" max="1" step="0.01" value="0"></div>
-            <div class="field"><label for="space">Space <span class="value" id="spaceValue"></span></label><input id="space" type="range" min="0" max="1" step="0.01" value="0"></div>
-          </div>
-        </details>
-      </div>
+      <div class="control-grid" id="mainControls"></div>
+      <details open><summary>Oscillators</summary><div class="control-grid" id="oscControls"></div></details>
+      <details><summary>Advanced sound design</summary><div class="control-grid" id="advancedControls"></div></details>
     </section>
-
     <section class="workspace" aria-label="Waveform workspace">
       <div class="topline"><div><h1>Waveform</h1><p id="status">Ready</p></div><div class="stats"><span id="sampleRate">44.1 kHz</span><span id="channels">Mono</span></div></div>
       <div class="waveform"><div class="loader" id="loader">Generating sample</div><canvas id="canvas"></canvas></div>
@@ -237,13 +199,91 @@ INDEX_HTML = """<!doctype html>
       <audio id="audio" controls></audio>
     </section>
   </main>
-
   <script>
-    const ids = ["engine","waveform","frequency","duration","amplitude","attack","decay","noiseMix","filterCutoff","filterMode","drive","pitchDrop","metallic","bitDepth","osc2Waveform","osc2Ratio","osc2Level","noiseType","noiseDecay","filterResonance","filterEnv","pitchEnv","pitchDecay","transientLevel","transientTone","bodyLevel","bodyFrequency","bodyDecay","character","drift","smear","space"];
-    const controls = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
-    const labelIds = ["frequency","duration","amplitude","attack","decay","noiseMix","filterCutoff","drive","pitchDrop","metallic","bitDepth","osc2Ratio","osc2Level","noiseDecay","filterResonance","filterEnv","pitchEnv","pitchDecay","transientLevel","transientTone","bodyLevel","bodyFrequency","bodyDecay","character","drift","smear","space"];
-    const labels = Object.fromEntries(labelIds.map((id) => [id, document.getElementById(`${id}Value`)]));
-    const promptInput = document.getElementById("prompt");
+    const fieldDefs = [
+      ["mainControls","prompt","AI prompt","textarea","wide detuned Am9 pluck, gritty bass, dry conga"],
+      ["mainControls","chord","Chord","text","Am9, Cmaj7, Dm11, G13"],
+      ["mainControls","engine","Sound type","select",[["tone","Tone"],["kick","Kick"],["snare","Snare"],["closed_hat","Closed hat"],["open_hat","Open hat / cymbal"],["noise","Noise"],["percussion","Percussion"],["bass","Bass"],["pluck","Pluck"],["texture","Texture"]]],
+      ["mainControls","waveform","Osc 1 waveform","select",[["sine","Sine"],["square","Square"],["saw","Saw"],["triangle","Triangle"]]],
+      ["mainControls","frequency","Frequency","range",[80,1200,1,440,"Hz"]],
+      ["mainControls","duration","Duration","range",[0.03,3,0.01,1,"s"]],
+      ["mainControls","amplitude","Amplitude","range",[0.1,1,0.01,0.65,"%"]],
+      ["mainControls","attack","Attack","range",[0,0.5,0.001,0.005,"s"]],
+      ["mainControls","decay","Decay","range",[0.01,2,0.01,0.25,"s"]],
+      ["mainControls","noiseMix","Noise","range",[0,1,0.01,0,"%"]],
+      ["mainControls","filterCutoff","Filter","range",[80,18000,10,12000,"Hz"]],
+      ["mainControls","filterMode","Filter mode","select",[["lowpass","Lowpass"],["highpass","Highpass"]]],
+      ["mainControls","drive","Drive","range",[0,1,0.01,0,"%"]],
+      ["mainControls","pitchDrop","Pitch drop","range",[0,4,0.01,0,"%"]],
+      ["mainControls","metallic","Metallic","range",[0,1,0.01,0,"%"]],
+      ["mainControls","bitDepth","Bit depth","range",[4,16,1,16,"bit"]],
+      ["oscControls","osc1Level","Osc 1 level","range",[0,1,0.01,1,"%"]],
+      ["oscControls","osc1Octave","Osc 1 octave","range",[-4,4,1,0,""]],
+      ["oscControls","osc1Semitone","Osc 1 semitone","range",[-24,24,1,0,"st"]],
+      ["oscControls","osc1Fine","Osc 1 fine","range",[-100,100,1,0,"cents"]],
+      ["oscControls","osc2Waveform","Osc 2 waveform","select",[["sine","Sine"],["square","Square"],["saw","Saw"],["triangle","Triangle"]]],
+      ["oscControls","osc2Ratio","Osc 2 ratio","range",[0.25,8,0.01,1,"x"]],
+      ["oscControls","osc2Level","Osc 2 level","range",[0,1,0.01,0,"%"]],
+      ["oscControls","osc2Octave","Osc 2 octave","range",[-4,4,1,0,""]],
+      ["oscControls","osc2Semitone","Osc 2 semitone","range",[-24,24,1,0,"st"]],
+      ["oscControls","osc2Fine","Osc 2 fine","range",[-100,100,1,0,"cents"]],
+      ["advancedControls","noiseType","Noise type","select",[["white","White"],["dark","Dark"],["bright","Bright"],["wood","Wood"],["metal","Metal"]]],
+      ["advancedControls","noiseDecay","Noise decay","range",[0.005,3,0.005,0.08,"s"]],
+      ["advancedControls","filterResonance","Filter resonance","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","filterEnv","Filter envelope","range",[-1,1,0.01,0,"%"]],
+      ["advancedControls","pitchEnv","Pitch envelope","range",[-1200,1200,1,0,"cents"]],
+      ["advancedControls","pitchDecay","Pitch decay","range",[0.005,2,0.005,0.08,"s"]],
+      ["advancedControls","transientLevel","Transient level","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","transientTone","Transient tone","range",[80,12000,10,1500,"Hz"]],
+      ["advancedControls","bodyLevel","Body level","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","bodyFrequency","Body frequency","range",[35,2000,1,180,"Hz"]],
+      ["advancedControls","bodyDecay","Body decay","range",[0.02,4,0.01,0.35,"s"]],
+      ["advancedControls","character","Character","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","drift","Drift","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","smear","Smear","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","space","Space","range",[0,1,0.01,0,"%"]]
+    ];
+    const labels = {};
+    const controls = {};
+
+    function addField([section,id,label,type,config]) {
+      const field = document.createElement("div");
+      field.className = id === "prompt" ? "field prompt-field" : "field";
+      const labelEl = document.createElement("label");
+      labelEl.htmlFor = id;
+      labelEl.textContent = label;
+      if (type === "range") {
+        const value = document.createElement("span");
+        value.className = "value";
+        value.id = `${id}Value`;
+        labelEl.append(" ", value);
+        labels[id] = value;
+      }
+      field.append(labelEl);
+      let input;
+      if (type === "select") {
+        input = document.createElement("select");
+        config.forEach(([value, text]) => input.add(new Option(text, value)));
+      } else if (type === "textarea") {
+        input = document.createElement("textarea");
+        input.rows = 3;
+        input.placeholder = config;
+      } else {
+        input = document.createElement("input");
+        input.type = type;
+        if (type === "range") {
+          [input.min, input.max, input.step, input.value] = config;
+        } else {
+          input.placeholder = config;
+        }
+      }
+      input.id = id;
+      field.append(input);
+      document.getElementById(section).append(field);
+      controls[id] = input;
+    }
+    fieldDefs.forEach(addField);
+
     const generateButton = document.getElementById("generate");
     const audio = document.getElementById("audio");
     const canvas = document.getElementById("canvas");
@@ -256,86 +296,41 @@ INDEX_HTML = """<!doctype html>
     const context = new AudioContext();
     let currentBuffer = null;
 
-    const percent = (value) => `${Math.round(Number(value) * 100)}%`;
-    const fixed = (value, digits) => Number(value).toFixed(digits);
-
-    function updateLabels() {
-      labels.frequency.textContent = `${controls.frequency.value} Hz`;
-      labels.duration.textContent = `${fixed(controls.duration.value, 2)} s`;
-      labels.amplitude.textContent = percent(controls.amplitude.value);
-      labels.attack.textContent = `${fixed(controls.attack.value, 3)} s`;
-      labels.decay.textContent = `${fixed(controls.decay.value, 2)} s`;
-      labels.noiseMix.textContent = percent(controls.noiseMix.value);
-      labels.filterCutoff.textContent = `${controls.filterCutoff.value} Hz`;
-      labels.drive.textContent = percent(controls.drive.value);
-      labels.pitchDrop.textContent = percent(controls.pitchDrop.value);
-      labels.metallic.textContent = percent(controls.metallic.value);
-      labels.bitDepth.textContent = `${controls.bitDepth.value} bit`;
-      labels.osc2Ratio.textContent = `${fixed(controls.osc2Ratio.value, 2)}x`;
-      labels.osc2Level.textContent = percent(controls.osc2Level.value);
-      labels.noiseDecay.textContent = `${fixed(controls.noiseDecay.value, 3)} s`;
-      labels.filterResonance.textContent = percent(controls.filterResonance.value);
-      labels.filterEnv.textContent = percent(controls.filterEnv.value);
-      labels.pitchEnv.textContent = `${controls.pitchEnv.value} cents`;
-      labels.pitchDecay.textContent = `${fixed(controls.pitchDecay.value, 3)} s`;
-      labels.transientLevel.textContent = percent(controls.transientLevel.value);
-      labels.transientTone.textContent = `${controls.transientTone.value} Hz`;
-      labels.bodyLevel.textContent = percent(controls.bodyLevel.value);
-      labels.bodyFrequency.textContent = `${controls.bodyFrequency.value} Hz`;
-      labels.bodyDecay.textContent = `${fixed(controls.bodyDecay.value, 2)} s`;
-      labels.character.textContent = percent(controls.character.value);
-      labels.drift.textContent = percent(controls.drift.value);
-      labels.smear.textContent = percent(controls.smear.value);
-      labels.space.textContent = percent(controls.space.value);
+    function formatValue(id, value) {
+      const def = fieldDefs.find((item) => item[1] === id);
+      const unit = def && def[3] === "range" ? def[4][4] : "";
+      if (unit === "%") return `${Math.round(Number(value) * 100)}%`;
+      if (unit === "s") return `${Number(value).toFixed(3)} s`;
+      return `${value}${unit ? ` ${unit}` : ""}`;
     }
-
+    function updateLabels() {
+      Object.entries(labels).forEach(([id, label]) => label.textContent = formatValue(id, controls[id].value));
+    }
     function buildUrl() {
       const params = new URLSearchParams({
-        engine: controls.engine.value,
-        waveform: controls.waveform.value,
-        frequency: controls.frequency.value,
-        duration: controls.duration.value,
-        amplitude: controls.amplitude.value,
-        attack: controls.attack.value,
-        decay: controls.decay.value,
-        sustain: 0,
-        release: 0.08,
-        noise_mix: controls.noiseMix.value,
-        filter_cutoff: controls.filterCutoff.value,
-        filter_mode: controls.filterMode.value,
-        drive: controls.drive.value,
-        pitch_drop: controls.pitchDrop.value,
-        metallic: controls.metallic.value,
-        bit_depth: controls.bitDepth.value,
-        osc2_waveform: controls.osc2Waveform.value,
-        osc2_ratio: controls.osc2Ratio.value,
-        osc2_level: controls.osc2Level.value,
-        noise_type: controls.noiseType.value,
-        noise_decay: controls.noiseDecay.value,
-        filter_resonance: controls.filterResonance.value,
-        filter_env: controls.filterEnv.value,
-        pitch_env: controls.pitchEnv.value,
-        pitch_decay: controls.pitchDecay.value,
-        transient_level: controls.transientLevel.value,
-        transient_tone: controls.transientTone.value,
-        body_level: controls.bodyLevel.value,
-        body_frequency: controls.bodyFrequency.value,
-        body_decay: controls.bodyDecay.value,
-        character: controls.character.value,
-        drift: controls.drift.value,
-        smear: controls.smear.value,
-        space: controls.space.value
+        engine: controls.engine.value, waveform: controls.waveform.value, frequency: controls.frequency.value,
+        duration: controls.duration.value, amplitude: controls.amplitude.value, attack: controls.attack.value,
+        decay: controls.decay.value, sustain: 0, release: 0.08, noise_mix: controls.noiseMix.value,
+        filter_cutoff: controls.filterCutoff.value, filter_mode: controls.filterMode.value, drive: controls.drive.value,
+        pitch_drop: controls.pitchDrop.value, metallic: controls.metallic.value, bit_depth: controls.bitDepth.value,
+        chord: controls.chord.value, osc1_level: controls.osc1Level.value, osc1_octave: controls.osc1Octave.value,
+        osc1_semitone: controls.osc1Semitone.value, osc1_fine: controls.osc1Fine.value, osc2_waveform: controls.osc2Waveform.value,
+        osc2_ratio: controls.osc2Ratio.value, osc2_level: controls.osc2Level.value, osc2_octave: controls.osc2Octave.value,
+        osc2_semitone: controls.osc2Semitone.value, osc2_fine: controls.osc2Fine.value, noise_type: controls.noiseType.value,
+        noise_decay: controls.noiseDecay.value, filter_resonance: controls.filterResonance.value, filter_env: controls.filterEnv.value,
+        pitch_env: controls.pitchEnv.value, pitch_decay: controls.pitchDecay.value, transient_level: controls.transientLevel.value,
+        transient_tone: controls.transientTone.value, body_level: controls.bodyLevel.value, body_frequency: controls.bodyFrequency.value,
+        body_decay: controls.bodyDecay.value, character: controls.character.value, drift: controls.drift.value,
+        smear: controls.smear.value, space: controls.space.value
       });
       return `/api/sample.wav?${params.toString()}`;
     }
-
     function setLoading(isLoading, message = "Generating sample") {
       waveformPanel.classList.toggle("is-loading", isLoading);
       generateButton.disabled = isLoading;
       generateButton.textContent = isLoading ? "Generating..." : "Generate sample";
       loader.textContent = message;
     }
-
     async function renderFromControls(message = "", loadingMessage = "Generating sample") {
       updateLabels();
       status.textContent = "Generating";
@@ -348,7 +343,7 @@ INDEX_HTML = """<!doctype html>
         audio.src = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
         sampleRate.textContent = `${(currentBuffer.sampleRate / 1000).toFixed(1)} kHz`;
         channels.textContent = currentBuffer.numberOfChannels === 1 ? "Mono" : `${currentBuffer.numberOfChannels} channels`;
-        status.textContent = message || `${controls.engine.value} sample at ${controls.frequency.value} Hz`;
+        status.textContent = message || `${controls.engine.value} ${controls.chord.value.trim() || "sample"}`;
         drawWaveform();
       } catch (error) {
         status.textContent = error.message;
@@ -356,10 +351,9 @@ INDEX_HTML = """<!doctype html>
         setLoading(false);
       }
     }
-
     async function generate() {
       if (generateButton.disabled) return;
-      const prompt = promptInput.value.trim();
+      const prompt = controls.prompt.value.trim();
       if (!prompt) {
         patchDetails.textContent = "Manual patch";
         await renderFromControls();
@@ -367,7 +361,6 @@ INDEX_HTML = """<!doctype html>
       }
       await planFromPrompt(prompt);
     }
-
     async function planFromPrompt(prompt) {
       status.textContent = "Planning sample with AI";
       setLoading(true, "Planning with AI");
@@ -383,32 +376,29 @@ INDEX_HTML = """<!doctype html>
         setLoading(false);
       }
     }
-
     function applyPlan(plan) {
       const map = {
-        engine:"engine", waveform:"waveform", frequency:"frequency", duration:"duration", amplitude:"amplitude", attack:"attack", decay:"decay",
-        noise_mix:"noiseMix", filter_cutoff:"filterCutoff", filter_mode:"filterMode", drive:"drive", pitch_drop:"pitchDrop", metallic:"metallic",
-        bit_depth:"bitDepth", osc2_waveform:"osc2Waveform", osc2_ratio:"osc2Ratio", osc2_level:"osc2Level", noise_type:"noiseType",
-        noise_decay:"noiseDecay", filter_resonance:"filterResonance", filter_env:"filterEnv", pitch_env:"pitchEnv", pitch_decay:"pitchDecay",
-        transient_level:"transientLevel", transient_tone:"transientTone", body_level:"bodyLevel", body_frequency:"bodyFrequency", body_decay:"bodyDecay",
-        character:"character", drift:"drift", smear:"smear", space:"space"
+        engine:"engine", waveform:"waveform", frequency:"frequency", duration:"duration", amplitude:"amplitude",
+        attack:"attack", decay:"decay", noise_mix:"noiseMix", filter_cutoff:"filterCutoff", filter_mode:"filterMode",
+        drive:"drive", pitch_drop:"pitchDrop", metallic:"metallic", bit_depth:"bitDepth", chord:"chord",
+        osc1_level:"osc1Level", osc1_octave:"osc1Octave", osc1_semitone:"osc1Semitone", osc1_fine:"osc1Fine",
+        osc2_waveform:"osc2Waveform", osc2_ratio:"osc2Ratio", osc2_level:"osc2Level", osc2_octave:"osc2Octave",
+        osc2_semitone:"osc2Semitone", osc2_fine:"osc2Fine", noise_type:"noiseType", noise_decay:"noiseDecay",
+        filter_resonance:"filterResonance", filter_env:"filterEnv", pitch_env:"pitchEnv", pitch_decay:"pitchDecay",
+        transient_level:"transientLevel", transient_tone:"transientTone", body_level:"bodyLevel",
+        body_frequency:"bodyFrequency", body_decay:"bodyDecay", character:"character", drift:"drift",
+        smear:"smear", space:"space"
       };
       Object.entries(map).forEach(([key, id]) => {
         if (plan[key] !== undefined && controls[id]) controls[id].value = plan[key];
       });
       updateLabels();
     }
-
     async function readError(response) {
       const text = await response.text();
-      try {
-        const payload = JSON.parse(text);
-        return payload.error || text;
-      } catch {
-        return text.replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ").trim();
-      }
+      try { return JSON.parse(text).error || text; }
+      catch { return text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(); }
     }
-
     function drawWaveform() {
       if (!currentBuffer) return;
       const rect = canvas.getBoundingClientRect();
@@ -422,7 +412,6 @@ INDEX_HTML = """<!doctype html>
       const centerY = rect.height / 2;
       const samplesPerPixel = Math.max(1, Math.floor(data.length / rect.width));
       ctx.strokeStyle = "#d8dce2";
-      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, centerY);
       ctx.lineTo(rect.width, centerY);
@@ -432,19 +421,16 @@ INDEX_HTML = """<!doctype html>
       ctx.beginPath();
       for (let x = 0; x < rect.width; x += 1) {
         const start = x * samplesPerPixel;
-        let min = 1;
-        let max = -1;
+        let min = 1, max = -1;
         for (let i = 0; i < samplesPerPixel && start + i < data.length; i += 1) {
-          const value = data[start + i];
-          min = Math.min(min, value);
-          max = Math.max(max, value);
+          min = Math.min(min, data[start + i]);
+          max = Math.max(max, data[start + i]);
         }
         ctx.moveTo(x, centerY + min * centerY * 0.86);
         ctx.lineTo(x, centerY + max * centerY * 0.86);
       }
       ctx.stroke();
     }
-
     Object.values(controls).forEach((control) => control.addEventListener("input", updateLabels));
     generateButton.addEventListener("click", generate);
     window.addEventListener("resize", drawWaveform);
