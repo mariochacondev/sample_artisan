@@ -21,6 +21,7 @@ ENGINES = (
     "noise",
     "percussion",
     "bass",
+    "keys",
     "pluck",
     "texture",
 )
@@ -228,6 +229,7 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
 
     values = _apply_filter(values, patch, sample_rate)
     values = _apply_space(values, patch, sample_rate)
+    values = _apply_output_headroom(values)
     frames = bytearray()
     for value in values:
         sample = int(_clamp(value, -1.0, 1.0) * 32767)
@@ -298,6 +300,8 @@ def _engine_value(
             sub = math.sin(2 * math.pi * phase)
             edge = _oscillator_stack_value(patch, frequency, t) * 0.35
             return (sub * 0.65) + edge
+        case "keys":
+            return _keys_value(patch, frequency, t, rng)
         case "texture":
             harmonic = _metallic_cluster(t, frequency, patch.metallic)
             return (_oscillator_stack_value(patch, frequency, t) * 0.35) + (
@@ -321,6 +325,35 @@ def _oscillator_stack_value(patch: SynthPatch, frequency: float, t: float) -> fl
     osc2 = _wave_value((osc2_frequency * t) % 1.0, patch.osc2_waveform) * patch.osc2_level
     total_level = max(0.001, patch.osc1_level + patch.osc2_level)
     return (osc1 + osc2) / total_level
+
+
+def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Random) -> float:
+    brightness = _clamp(0.22 + (patch.character * 0.55) + (patch.metallic * 0.25), 0.05, 1.0)
+    damping = 1.0 + (patch.smear * 1.8)
+    partials = (
+        (1.0, 1.0, 0.55),
+        (2.01, 0.46, 1.05),
+        (3.02, 0.24 + (brightness * 0.12), 1.55),
+        (4.07, 0.14 + (brightness * 0.10), 2.15),
+        (5.12, 0.09 + (brightness * 0.08), 2.8),
+        (6.21, 0.05 + (brightness * 0.06), 3.6),
+    )
+    total = 0.0
+    total_weight = 0.0
+    for ratio, weight, decay_rate in partials:
+        inharmonicity = 1.0 + (patch.character * ratio * ratio * 0.0008)
+        partial_frequency = frequency * ratio * inharmonicity
+        decay = math.exp(-t * decay_rate / damping)
+        total += math.sin(2 * math.pi * partial_frequency * t) * weight * decay
+        total_weight += weight
+
+    hammer_tone = patch.transient_tone if patch.transient_tone > 80 else frequency * 8.0
+    hammer = math.sin(2 * math.pi * hammer_tone * t)
+    hammer += rng.uniform(-0.6, 0.6) * (0.35 + (patch.character * 0.3))
+    hammer *= patch.transient_level * math.exp(-t * 95.0 / damping)
+    soundboard = math.sin(2 * math.pi * frequency * 0.5 * t) * patch.body_level
+    soundboard *= math.exp(-t / max(patch.body_decay, 0.08))
+    return (total / max(total_weight, 0.001)) + (hammer * 0.18) + (soundboard * 0.18)
 
 
 def _chord_stack_value(
@@ -560,6 +593,8 @@ def _surface_noise(patch: SynthPatch, t: float, rng: random.Random) -> float:
     amount = patch.character * 0.012
     if patch.engine in {"percussion", "snare", "closed_hat", "open_hat"}:
         amount *= 1.8
+    if patch.engine == "keys":
+        amount *= 0.35
     return rng.uniform(-amount, amount) * math.exp(-t / max(patch.duration, 0.001))
 
 
@@ -603,6 +638,14 @@ def _apply_filter(values: list[float], patch: SynthPatch, sample_rate: int) -> l
             else (high + resonance)
         )
     return filtered
+
+
+def _apply_output_headroom(values: list[float], headroom: float = 0.92) -> list[float]:
+    peak = max((abs(value) for value in values), default=0.0)
+    if peak <= headroom:
+        return values
+    gain = headroom / peak
+    return [value * gain for value in values]
 
 
 def _filter_cutoff_at(patch: SynthPatch, progress: float, sample_rate: int) -> float:
