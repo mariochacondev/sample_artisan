@@ -170,7 +170,7 @@ INDEX_HTML = """<!doctype html>
     .value { float:right; color:var(--muted); font-weight:600; }
     .topline { display:flex; justify-content:space-between; gap:16px; align-items:end; }
     .stats { display:flex; gap:16px; color:var(--muted); font-size:13px; white-space:nowrap; }
-    .waveform { position:relative; width:50%; min-height:0; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; overflow:hidden; }
+    .waveform { position:relative; width:100%; max-height:500px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; overflow:hidden; }
     canvas { display:block; width:100%; height:100%; min-height:0; }
     audio { width:100%; height:32px; }
     .loader { position:absolute; inset:0; display:none; place-items:center; background:rgba(251,252,253,.78); color:var(--accent-strong); font-size:14px; font-weight:800; z-index:2; }
