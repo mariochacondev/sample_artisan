@@ -7,7 +7,13 @@ import json
 import os
 from urllib import error, request
 
-from sample_artisan.synth import ENGINES, NOISE_TYPES, WAVEFORMS, SynthPatch
+from sample_artisan.synth import (
+    ENGINES,
+    NOISE_TYPES,
+    WAVEFORMS,
+    SynthPatch,
+    _chord_intervals,
+)
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
@@ -92,13 +98,17 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "Design like Serum/Vital: two oscillators plus noise, filter, pitch, "
         "transient, body, drive, and space. Osc 1 uses waveform plus "
         "osc1_level/octave/semitone/fine. Osc 2 uses osc2_waveform/ratio/level/"
-        "octave/semitone/fine. For chord prompts such as Am9, Cmaj7, Dm11, "
-        "or G13, set chord exactly to that symbol so the renderer plays the "
-        "real chord tones. Leave chord empty for single notes or drums. "
+        "octave/semitone/fine. Use chord only when the user explicitly asks "
+        "for a real musical chord symbol, such as Am9, Cmaj7, Dm11, or G13. "
+        "When using chord, set it exactly to the chord symbol. For drums, "
+        "percussion, single notes, bass hits, claps, snares, hats, cymbals, "
+        "textures, or any non-chord prompt, omit chord or set it to an empty "
+        "string. Never put instrument names such as clap, snare, kick, hat, "
+        "cymbal, conga, bass, pluck, or texture in chord. "
         "Map conga/bongo/tom/hand drum to percussion, kick/bass drum to kick, "
-        "bass/sub to bass, pluck/mallet/kalimba to pluck, ambience/riser/fx "
-        "to texture, snare/clap/rimshot to snare, cymbal/crash/ride/open hat "
-        "to open_hat, and closed hat/hihat to closed_hat."
+        "clap/calp/snare/rimshot to snare, bass/sub to bass, pluck/mallet/"
+        "kalimba to pluck, ambience/riser/fx to texture, cymbal/crash/ride/"
+        "open hat to open_hat, and closed hat/hihat to closed_hat."
     )
     model_name = model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     url = os.getenv("OLLAMA_URL", OLLAMA_URL)
@@ -197,7 +207,7 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         pitch_drop=_float_value(patch_data, "pitch_drop"),
         metallic=_float_value(patch_data, "metallic"),
         bit_depth=_int_value(patch_data, "bit_depth"),
-        chord=str(patch_data["chord"]).strip(),
+        chord=_normalize_chord(str(patch_data["chord"])),
         osc1_level=_float_value(patch_data, "osc1_level"),
         osc1_octave=_int_value(patch_data, "osc1_octave"),
         osc1_semitone=_int_value(patch_data, "osc1_semitone"),
@@ -228,11 +238,13 @@ def _parse_patch(raw_text: str) -> SynthPatch:
 
 
 def _polish_patch(patch: SynthPatch) -> SynthPatch:
+    if patch.engine in {"kick", "snare", "closed_hat", "open_hat", "noise", "percussion"}:
+        patch = replace(patch, chord="")
+
     if patch.engine == "kick":
         return replace(
             patch,
             waveform="sine",
-            chord="",
             frequency=_clamp(patch.frequency, 35.0, 90.0),
             duration=_clamp(patch.duration, 0.18, 0.85),
             attack=_clamp(patch.attack, 0.001, 0.008),
@@ -252,7 +264,6 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
     if patch.engine == "percussion":
         return replace(
             patch,
-            chord="",
             frequency=_clamp(patch.frequency, 120.0, 520.0),
             duration=_clamp(patch.duration, 0.16, 1.4),
             attack=_clamp(patch.attack, 0.001, 0.015),
@@ -276,7 +287,6 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
     if patch.engine in {"closed_hat", "open_hat"}:
         return replace(
             patch,
-            chord="",
             frequency=_clamp(patch.frequency, 2_500.0, 11_000.0),
             duration=_clamp(
                 patch.duration,
@@ -331,6 +341,9 @@ def _normalize_engine(engine: str) -> str:
         "hihat": "closed_hat",
         "closed_hihat": "closed_hat",
         "open_hihat": "open_hat",
+        "clap": "snare",
+        "calp": "snare",
+        "rimshot": "snare",
         "conga": "percussion",
         "bongo": "percussion",
         "tom": "percussion",
@@ -350,6 +363,13 @@ def _normalize_engine(engine: str) -> str:
 def _normalize_choice(value: str, choices: tuple[str, ...], default: str) -> str:
     normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
     return normalized if normalized in choices else default
+
+
+def _normalize_chord(value: str) -> str:
+    chord = value.strip()
+    if not chord or chord.lower() in {"none", "null", "false", "n/a", "no chord"}:
+        return ""
+    return chord if _chord_intervals(chord) is not None else ""
 
 
 def _float_value(data: dict[str, object], key: str) -> float:
