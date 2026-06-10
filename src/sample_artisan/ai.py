@@ -92,8 +92,9 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "one-shots, kick for bass drums, snare for snares/claps/rimshots, "
         "closed_hat for tight hats, open_hat for open hats/cymbals/crashes/rides, "
         "noise for noise hits, percussion for congas/bongos/toms/hand drums, "
-        "bass for bass/sub/808 hits, pluck for plucked synths/mallets/kalimba "
-        "and chord stabs, texture for ambience/risers/fx. "
+        "bass for bass/sub/808 hits, keys for piano/upright piano/electric piano/"
+        "keyboard chords and soft key hits, pluck for plucked synths/mallets/"
+        "kalimba and chord stabs, texture for ambience/risers/fx. "
         "Use only these keys when needed: engine, waveform, frequency, duration, "
         "amplitude, attack, decay, sustain, release, noise_mix, filter_cutoff, "
         "filter_mode, drive, pitch_drop, metallic, bit_depth, chord, osc1_level, "
@@ -109,13 +110,26 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "Am9, Cmaj7, Dm11, or G13. For drums, claps, snares, hats, cymbals, "
         "percussion, bass hits, single notes, or textures, set chord to an empty "
         "string or omit it. Never put instrument names in chord. "
+        "For piano or upright piano prompts, use engine keys. Keep amplitude "
+        "around 0.35 to 0.58 for chords, drive near 0, bit_depth 16, noise_mix "
+        "below 0.08, metallic below 0.25, lowpass filtering around 3000 to 9000, "
+        "attack 0.002 to 0.02, decay 0.7 to 2.8, sustain 0 to 0.25, release "
+        "0.15 to 0.8, transient_level 0.08 to 0.35, body_level 0.12 to 0.45, "
+        "character for harmonics, drift for natural tuning, smear for softer felt, "
+        "and space for room. Softer piano should reduce filter_cutoff and transient; "
+        "more impact should add character/body, not clipping or high drive. "
         "Examples: prompt 'clap' -> engine snare, waveform square or noise-like, "
         "duration 0.12, attack 0.001, decay 0.12, sustain 0, release 0.04, "
         "noise_mix 0.8, filter_mode highpass, filter_cutoff 2500, transient_level "
         "0.6, transient_tone 3500, chord empty. Prompt 'closed hihat' -> engine "
         "closed_hat, short duration, high noise_mix, highpass filtering, metallic "
         "tone. Prompt 'wide detuned Am9 pluck' -> engine pluck, chord Am9, saw "
-        "or triangle oscillators, short attack, musical decay."
+        "or triangle oscillators, short attack, musical decay. Prompt 'upright "
+        "piano Fm9 soft but harmonic' -> engine keys, chord Fm9, sine or triangle, "
+        "duration 1.4, amplitude 0.45, attack 0.008, decay 1.6, sustain 0.08, "
+        "release 0.45, filter_mode lowpass, filter_cutoff 5200, drive 0, "
+        "transient_level 0.18, transient_tone 2600, body_level 0.28, "
+        "body_decay 1.6, character 0.45, drift 0.16, smear 0.35, space 0.22."
     )
     model_name = model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     url = os.getenv("OLLAMA_URL", OLLAMA_URL)
@@ -357,6 +371,13 @@ def _normalize_engine(engine: str) -> str:
         "wood_block": "percussion",
         "sub": "bass",
         "sub_bass": "bass",
+        "piano": "keys",
+        "upright": "keys",
+        "upright_piano": "keys",
+        "electric_piano": "keys",
+        "epiano": "keys",
+        "keyboard": "keys",
+        "key": "keys",
         "mallet": "pluck",
         "kalimba": "pluck",
         "pad": "texture",
