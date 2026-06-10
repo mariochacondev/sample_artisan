@@ -1,3 +1,6 @@
+import io
+import wave
+
 import pytest
 
 from sample_artisan import generate_wave_sample
@@ -71,9 +74,45 @@ def test_generate_chord_sample_uses_oscillator_stack() -> None:
     assert len(sample) > 1000
 
 
+def test_generate_keys_chord_uses_piano_like_engine() -> None:
+    sample = generate_wave_sample(
+        engine="keys",
+        chord="Fm9",
+        waveform="triangle",
+        duration=1.2,
+        amplitude=0.9,
+        attack=0.008,
+        decay=1.1,
+        sustain=0.08,
+        release=0.3,
+        filter_cutoff=5200,
+        transient_level=0.18,
+        transient_tone=2600,
+        body_level=0.24,
+        body_decay=1.4,
+        character=0.45,
+        drift=0.15,
+        smear=0.35,
+        space=0.2,
+    )
+
+    with wave.open(io.BytesIO(sample), "rb") as wav_file:
+        frames = wav_file.readframes(wav_file.getnframes())
+    peaks = [abs(int.from_bytes(frames[i : i + 2], "little", signed=True)) for i in range(0, len(frames), 2)]
+
+    assert sample.startswith(b"RIFF")
+    assert len(sample) > 1000
+    assert max(peaks) <= int(32767 * 0.92) + 1
+
+
 def test_chord_parser_supports_am9() -> None:
     assert _chord_intervals("Am9") == (0, 3, 7, 10, 14)
     assert round(_chord_root_frequency("Am9") or 0) == 220
+
+
+def test_chord_parser_supports_fm9() -> None:
+    assert _chord_intervals("Fm9") == (0, 3, 7, 10, 14)
+    assert round(_chord_root_frequency("Fm9") or 0) == 349
 
 
 def test_cli_parser_defaults_to_sample_wav() -> None:
@@ -83,6 +122,12 @@ def test_cli_parser_defaults_to_sample_wav() -> None:
     assert args.engine == "tone"
     assert args.waveform == "sine"
     assert args.frequency == 440.0
+
+
+def test_cli_parser_accepts_keys_engine() -> None:
+    args = build_parser().parse_args(["--engine", "keys"])
+
+    assert args.engine == "keys"
 
 
 def test_parse_ai_sample_plan() -> None:
@@ -106,6 +151,24 @@ def test_parse_ai_sample_plan() -> None:
     assert plan.chord == "Am9"
     assert plan.osc2_octave == 1
     assert plan.osc2_fine == -5
+
+
+def test_parse_ai_piano_plan_uses_keys_engine() -> None:
+    plan = _parse_patch(
+        '{"engine":"upright piano","waveform":"triangle","frequency":349,'
+        '"duration":1.4,"amplitude":0.45,"attack":0.008,"decay":1.6,'
+        '"sustain":0.08,"release":0.45,"noise_mix":0.02,'
+        '"filter_cutoff":5200,"filter_mode":"lowpass","drive":0,'
+        '"pitch_drop":0,"metallic":0.12,"bit_depth":16,'
+        '"chord":"Fm9","transient_level":0.18,"transient_tone":2600,'
+        '"body_level":0.28,"body_decay":1.6,"character":0.45,'
+        '"drift":0.16,"smear":0.35,"space":0.22,'
+        '"description":"soft upright F minor 9"}'
+    )
+
+    assert plan.engine == "keys"
+    assert plan.chord == "Fm9"
+    assert plan.drive == 0
 
 
 def test_ai_clap_prompt_does_not_become_chord() -> None:
