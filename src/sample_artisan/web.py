@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from sample_artisan.ai import plan_sample_from_prompt
-from sample_artian.synth import generate_wave_sample
+from sample_artisan.synth import generate_wave_sample
 
 HOST = "127.0.0.1"
 PORT = 8000
