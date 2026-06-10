@@ -216,8 +216,8 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
         )
         noise = _noise_value(patch, rng)
         noise *= _noise_envelope(t, patch)
-        transient = _transient_value(patch, t, rng)
-        body = _body_value(patch, t)
+        transient = 0.0 if patch.engine == "keys" else _transient_value(patch, t, rng)
+        body = 0.0 if patch.engine == "keys" else _body_value(patch, t)
         mixed = (tone * (1.0 - patch.noise_mix)) + (noise * patch.noise_mix)
         mixed += transient + body
         mixed *= _character_gain(patch, t, rng)
@@ -328,6 +328,36 @@ def _oscillator_stack_value(patch: SynthPatch, frequency: float, t: float) -> fl
 
 
 def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Random) -> float:
+    osc1_level = _clamp(patch.osc1_level, 0.0, 1.0)
+    osc2_level = _clamp(patch.osc2_level, 0.0, 1.0)
+    total_level = osc1_level + osc2_level
+    if total_level <= 0:
+        return 0.0
+
+    osc1_frequency = _tuned_frequency(
+        frequency, patch.osc1_octave, patch.osc1_semitone, patch.osc1_fine
+    )
+    osc2_frequency = _tuned_frequency(
+        frequency * max(0.1, patch.osc2_ratio),
+        patch.osc2_octave,
+        patch.osc2_semitone,
+        patch.osc2_fine,
+    )
+    osc1 = _keys_string_value(patch, osc1_frequency, t, patch.waveform)
+    osc2 = _keys_string_value(patch, osc2_frequency, t, patch.osc2_waveform)
+    strings = ((osc1 * osc1_level) + (osc2 * osc2_level)) / total_level
+    excitation = _clamp(total_level, 0.0, 1.0)
+
+    hammer_tone = patch.transient_tone if patch.transient_tone > 80 else frequency * 8.0
+    hammer = math.sin(2 * math.pi * hammer_tone * t)
+    hammer += rng.uniform(-0.6, 0.6) * (0.35 + (patch.character * 0.3))
+    hammer *= patch.transient_level * excitation * math.exp(-t * 95.0 / (1.0 + patch.smear * 1.8))
+    soundboard = math.sin(2 * math.pi * frequency * 0.5 * t) * patch.body_level
+    soundboard *= excitation * math.exp(-t / max(patch.body_decay, 0.08))
+    return strings + (hammer * 0.18) + (soundboard * 0.18)
+
+
+def _keys_string_value(patch: SynthPatch, frequency: float, t: float, waveform: str) -> float:
     brightness = _clamp(0.22 + (patch.character * 0.55) + (patch.metallic * 0.25), 0.05, 1.0)
     damping = 1.0 + (patch.smear * 1.8)
     partials = (
@@ -344,16 +374,9 @@ def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Rando
         inharmonicity = 1.0 + (patch.character * ratio * ratio * 0.0008)
         partial_frequency = frequency * ratio * inharmonicity
         decay = math.exp(-t * decay_rate / damping)
-        total += math.sin(2 * math.pi * partial_frequency * t) * weight * decay
+        total += _wave_value((partial_frequency * t) % 1.0, waveform) * weight * decay
         total_weight += weight
-
-    hammer_tone = patch.transient_tone if patch.transient_tone > 80 else frequency * 8.0
-    hammer = math.sin(2 * math.pi * hammer_tone * t)
-    hammer += rng.uniform(-0.6, 0.6) * (0.35 + (patch.character * 0.3))
-    hammer *= patch.transient_level * math.exp(-t * 95.0 / damping)
-    soundboard = math.sin(2 * math.pi * frequency * 0.5 * t) * patch.body_level
-    soundboard *= math.exp(-t / max(patch.body_decay, 0.08))
-    return (total / max(total_weight, 0.001)) + (hammer * 0.18) + (soundboard * 0.18)
+    return total / max(total_weight, 0.001)
 
 
 def _chord_stack_value(
@@ -594,7 +617,7 @@ def _surface_noise(patch: SynthPatch, t: float, rng: random.Random) -> float:
     if patch.engine in {"percussion", "snare", "closed_hat", "open_hat"}:
         amount *= 1.8
     if patch.engine == "keys":
-        amount *= 0.35
+        amount *= 0.35 * _clamp(patch.osc1_level + patch.osc2_level, 0.0, 1.0)
     return rng.uniform(-amount, amount) * math.exp(-t / max(patch.duration, 0.001))
 
 
