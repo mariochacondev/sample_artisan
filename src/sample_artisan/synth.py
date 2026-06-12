@@ -231,6 +231,7 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
 
     values = _apply_filter(values, patch, sample_rate)
     values = _apply_space(values, patch, sample_rate)
+    values = _apply_edge_fades(values, sample_rate)
     values = _apply_output_headroom(values)
     frames = bytearray()
     for value in values:
@@ -672,6 +673,22 @@ def _apply_filter(values: list[float], patch: SynthPatch, sample_rate: int) -> l
             else (high + resonance)
         )
     return filtered
+
+
+def _apply_edge_fades(
+    values: list[float], sample_rate: int, fade_seconds: float = 0.003
+) -> list[float]:
+    if not values:
+        return values
+    fade_frames = min(len(values) // 2, max(1, int(sample_rate * fade_seconds)))
+    if fade_frames <= 0:
+        return values
+    faded = values[:]
+    for index in range(fade_frames):
+        gain = index / fade_frames
+        faded[index] *= gain
+        faded[-(index + 1)] *= gain
+    return faded
 
 
 def _apply_output_headroom(values: list[float], headroom: float = 0.92) -> list[float]:
