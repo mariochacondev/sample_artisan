@@ -25,6 +25,7 @@ ENGINES = (
     "pluck",
     "texture",
 )
+TONAL_ENGINES = {"tone", "bass", "keys", "pluck", "texture"}
 
 NOTE_OFFSETS = {
     "C": 0,
@@ -200,6 +201,7 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
     phase = 0.0
     drift_wander = 0.0
     chord_frequencies = _chord_frequencies(patch)
+    source_excitation = _source_excitation(patch)
 
     for index in range(frame_count):
         t = index / sample_rate
@@ -219,7 +221,7 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
         transient = 0.0 if patch.engine == "keys" else _transient_value(patch, t, rng)
         body = 0.0 if patch.engine == "keys" else _body_value(patch, t)
         mixed = (tone * (1.0 - patch.noise_mix)) + (noise * patch.noise_mix)
-        mixed += transient + body
+        mixed += (transient + body) * source_excitation
         mixed *= _character_gain(patch, t, rng)
         mixed += _surface_noise(patch, t, rng)
         mixed *= _envelope(t, patch)
@@ -297,13 +299,15 @@ def _engine_value(
         case "percussion":
             return math.sin(2 * math.pi * phase) * 0.35
         case "bass":
-            sub = math.sin(2 * math.pi * phase)
+            source_level = _source_level(patch)
+            sub = math.sin(2 * math.pi * phase) * source_level
             edge = _oscillator_stack_value(patch, frequency, t) * 0.35
             return (sub * 0.65) + edge
         case "keys":
             return _keys_value(patch, frequency, t, rng)
         case "texture":
-            harmonic = _metallic_cluster(t, frequency, patch.metallic)
+            source_level = _source_level(patch)
+            harmonic = _metallic_cluster(t, frequency, patch.metallic) * source_level
             return (_oscillator_stack_value(patch, frequency, t) * 0.35) + (
                 harmonic * 0.65
             )
@@ -325,6 +329,14 @@ def _oscillator_stack_value(patch: SynthPatch, frequency: float, t: float) -> fl
     osc2 = _wave_value((osc2_frequency * t) % 1.0, patch.osc2_waveform) * patch.osc2_level
     total_level = max(0.001, patch.osc1_level + patch.osc2_level)
     return (osc1 + osc2) / total_level
+
+
+def _source_level(patch: SynthPatch) -> float:
+    return _clamp(patch.osc1_level + patch.osc2_level, 0.0, 1.0)
+
+
+def _source_excitation(patch: SynthPatch) -> float:
+    return _source_level(patch) if patch.engine in TONAL_ENGINES else 1.0
 
 
 def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Random) -> float:
@@ -616,8 +628,7 @@ def _surface_noise(patch: SynthPatch, t: float, rng: random.Random) -> float:
     amount = patch.character * 0.012
     if patch.engine in {"percussion", "snare", "closed_hat", "open_hat"}:
         amount *= 1.8
-    if patch.engine == "keys":
-        amount *= 0.35 * _clamp(patch.osc1_level + patch.osc2_level, 0.0, 1.0)
+    amount *= _source_excitation(patch)
     return rng.uniform(-amount, amount) * math.exp(-t / max(patch.duration, 0.001))
 
 
