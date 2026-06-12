@@ -7,7 +7,7 @@ from pathlib import Path
 
 from sample_artisan.ai import plan_sample_from_prompt
 from sample_artisan import generate_wave_sample
-from sample_artisan.synth import ENGINES, render_patch
+from sample_artisan.synth import ENGINES, WAVEFORMS, render_patch
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,9 +24,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--waveform",
-        choices=["sine", "square", "saw", "triangle"],
+        choices=list(WAVEFORMS),
         default="sine",
-        help="Waveform shape to generate.",
+        help="Oscillator 1 waveform shape.",
     )
     parser.add_argument(
         "--engine",
@@ -52,6 +52,83 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.65,
         help="Amplitude between 0 and 1.",
     )
+    parser.add_argument(
+        "--chord",
+        default="",
+        help="Optional chord symbol such as Am9, Cmaj7, or Fm9.",
+    )
+    parser.add_argument(
+        "--osc1-level",
+        type=float,
+        default=1.0,
+        help="Oscillator 1 level between 0 and 1.",
+    )
+    parser.add_argument(
+        "--osc1-octave",
+        type=int,
+        default=0,
+        help="Oscillator 1 octave offset.",
+    )
+    parser.add_argument(
+        "--osc1-semitone",
+        type=int,
+        default=0,
+        help="Oscillator 1 semitone offset.",
+    )
+    parser.add_argument(
+        "--osc1-fine",
+        type=float,
+        default=0.0,
+        help="Oscillator 1 fine tuning in cents.",
+    )
+    parser.add_argument(
+        "--osc2-waveform",
+        choices=list(WAVEFORMS),
+        default="sine",
+        help="Oscillator 2 waveform shape.",
+    )
+    parser.add_argument(
+        "--osc2-ratio",
+        type=float,
+        default=1.0,
+        help="Oscillator 2 frequency ratio.",
+    )
+    parser.add_argument(
+        "--osc2-level",
+        type=float,
+        default=0.0,
+        help="Oscillator 2 level between 0 and 1.",
+    )
+    parser.add_argument(
+        "--osc2-octave",
+        type=int,
+        default=0,
+        help="Oscillator 2 octave offset.",
+    )
+    parser.add_argument(
+        "--osc2-semitone",
+        type=int,
+        default=0,
+        help="Oscillator 2 semitone offset.",
+    )
+    parser.add_argument(
+        "--osc2-fine",
+        type=float,
+        default=0.0,
+        help="Oscillator 2 fine tuning in cents.",
+    )
+    parser.add_argument(
+        "--oscillator-unison",
+        type=int,
+        default=1,
+        help="Number of unison voices per oscillator, from 1 to 8.",
+    )
+    parser.add_argument(
+        "--oscillator-detune",
+        type=float,
+        default=0.0,
+        help="Unison detune amount in cents.",
+    )
     return parser
 
 
@@ -72,6 +149,19 @@ def main() -> None:
         frequency=args.frequency,
         duration=args.duration,
         amplitude=args.amplitude,
+        chord=args.chord,
+        osc1_level=args.osc1_level,
+        osc1_octave=args.osc1_octave,
+        osc1_semitone=args.osc1_semitone,
+        osc1_fine=args.osc1_fine,
+        osc2_waveform=args.osc2_waveform,
+        osc2_ratio=args.osc2_ratio,
+        osc2_level=args.osc2_level,
+        osc2_octave=args.osc2_octave,
+        osc2_semitone=args.osc2_semitone,
+        osc2_fine=args.osc2_fine,
+        oscillator_unison=args.oscillator_unison,
+        oscillator_detune=args.oscillator_detune,
     )
     output_path = Path(args.output)
     output_path.write_bytes(sample)
