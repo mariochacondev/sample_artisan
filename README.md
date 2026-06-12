@@ -9,7 +9,10 @@ The prompt workflow uses a local Ollama text model as a patch designer. Ollama c
 ```bash
 sample-artisan sample.wav --waveform sine --frequency 440 --duration 1.5
 sample-artisan chord.wav --engine pluck --waveform saw --chord Am9
+sample-artisan wide-pluck.wav --engine pluck --waveform saw --chord Am9 --osc2-waveform triangle --osc2-level 0.35 --oscillator-unison 4 --oscillator-detune 12
 ```
+
+The command line supports the same core oscillator controls as the browser: chord symbols, Osc 1/Osc 2 levels, octave/semitone/fine tuning, Osc 2 ratio, unison voice count, and unison detune.
 
 ## Run the waveform interface
 
@@ -23,7 +26,7 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-The interface can generate real chord symbols such as `Am9`, `Cmaj7`, `Dm11`, and `G13`, and includes Osc 1/Osc 2 controls for waveform, level, octave, semitone, and fine tuning. Osc 2 also supports ratio tuning. No LFO is included yet.
+The interface can generate real chord symbols such as `Am9`, `Cmaj7`, `Dm11`, and `G13`, and includes Osc 1/Osc 2 controls for waveform, level, octave, semitone, fine tuning, unison, and detune. Osc 2 also supports ratio tuning. No LFO is included yet.
 
 ## Synthesis roadmap
 
