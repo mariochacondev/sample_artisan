@@ -18,7 +18,7 @@ from sample_artisan.synth import (
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
 DEFAULT_OLLAMA_TIMEOUT = 120
-DEFAULT_OLLAMA_NUM_PREDICT = 700
+DEFAULT_OLLAMA_NUM_PREDICT = 900
 DEFAULT_OLLAMA_KEEP_ALIVE = "10m"
 
 PATCH_SCHEMA = {
@@ -54,6 +54,8 @@ PATCH_SCHEMA = {
         "osc2_fine": {"type": "number", "minimum": -100, "maximum": 100},
         "oscillator_unison": {"type": "integer", "minimum": 1, "maximum": 8},
         "oscillator_detune": {"type": "number", "minimum": 0, "maximum": 50},
+        "oscillator_shape": {"type": "number", "minimum": 0, "maximum": 1},
+        "pulse_width": {"type": "number", "minimum": 0.05, "maximum": 0.95},
         "noise_type": {"type": "string", "enum": list(NOISE_TYPES)},
         "noise_decay": {"type": "number", "minimum": 0.005, "maximum": 3},
         "filter_resonance": {"type": "number", "minimum": 0, "maximum": 1},
@@ -69,6 +71,11 @@ PATCH_SCHEMA = {
         "drift": {"type": "number", "minimum": 0, "maximum": 1},
         "smear": {"type": "number", "minimum": 0, "maximum": 1},
         "space": {"type": "number", "minimum": 0, "maximum": 1},
+        "chorus": {"type": "number", "minimum": 0, "maximum": 1},
+        "tremolo_rate": {"type": "number", "minimum": 0, "maximum": 30},
+        "tremolo_depth": {"type": "number", "minimum": 0, "maximum": 1},
+        "output_gain": {"type": "number", "minimum": 0, "maximum": 2},
+        "output_headroom": {"type": "number", "minimum": 0.1, "maximum": 1},
         "description": {"type": "string"},
     },
     "required": [field.name for field in fields(SynthPatch) if field.name != "seed"],
@@ -102,9 +109,11 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "filter_mode, drive, pitch_drop, metallic, bit_depth, chord, osc1_level, "
         "osc1_octave, osc1_semitone, osc1_fine, osc2_waveform, osc2_ratio, "
         "osc2_level, osc2_octave, osc2_semitone, osc2_fine, oscillator_unison, "
-        "oscillator_detune, noise_type, noise_decay, filter_resonance, filter_env, "
-        "pitch_env, pitch_decay, transient_level, transient_tone, body_level, "
-        "body_frequency, body_decay, character, drift, smear, space, description. "
+        "oscillator_detune, oscillator_shape, pulse_width, noise_type, "
+        "noise_decay, filter_resonance, filter_env, pitch_env, pitch_decay, "
+        "transient_level, transient_tone, body_level, body_frequency, body_decay, "
+        "character, drift, smear, space, chorus, tremolo_rate, tremolo_depth, "
+        "output_gain, output_headroom, description. "
         "All time values are seconds, not milliseconds. Good one-shot durations "
         "are usually 0.03 to 1.5. Do not output huge values like 100 or 200 for "
         "decay, release, noise_decay, pitch_decay, or body_decay. "
@@ -114,6 +123,13 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "oscillator_detune in cents: 0 for clean sounds, 4 to 12 for subtle "
         "movement, 12 to 25 for wide synths, and avoid high detune for realistic "
         "piano unless the user asks for chorus or detuned character. "
+        "Use pulse_width for square/pulse sounds: 0.5 is balanced, lower or higher "
+        "values make thinner nasal pulse waves. Use oscillator_shape to morph or "
+        "bend oscillator tone: 0 clean, 0.2 to 0.5 more character, above 0.6 for "
+        "folded or rounded synthetic color. Use chorus for Juno pads, Rhodes, wide "
+        "keys, and lush synths. Use tremolo_rate and tremolo_depth for Rhodes, "
+        "Wurlitzer, vibey keys, and rhythmic motion. Use output_gain for final "
+        "level and output_headroom from 0.75 to 0.92 to prevent clipping. "
         "Use chord only for real chord symbols requested by the user, such as "
         "Am9, Cmaj7, Dm11, or G13. For drums, claps, snares, hats, cymbals, "
         "percussion, bass hits, single notes, or textures, set chord to an empty "
@@ -123,10 +139,15 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "below 0.08, metallic below 0.25, lowpass filtering around 3000 to 9000, "
         "attack 0.002 to 0.02, decay 0.7 to 2.8, sustain 0 to 0.25, release "
         "0.15 to 0.8, transient_level 0.08 to 0.35, body_level 0.12 to 0.45, "
-        "oscillator_unison 1 to 2, oscillator_detune 0 to 5, character for "
-        "harmonics, drift for natural tuning, smear for softer felt, and space "
-        "for room. Softer piano should reduce filter_cutoff and transient; more "
-        "impact should add character/body, not clipping or high drive. "
+        "oscillator_unison 1 to 2, oscillator_detune 0 to 5, oscillator_shape "
+        "0 to 0.25, pulse_width 0.5, chorus 0 to 0.18, tremolo_depth 0, "
+        "character for harmonics, drift for natural tuning, smear for softer felt, "
+        "and space for room. Softer piano should reduce filter_cutoff and transient; "
+        "more impact should add character/body, not clipping or high drive. "
+        "For Rhodes or electric piano, use engine keys, triangle or sine, moderate "
+        "metallic and character for tine/bell partials, body_level for cabinet, "
+        "chorus 0.18 to 0.45, tremolo_rate 3 to 7, tremolo_depth 0.15 to 0.45, "
+        "low drive 0.05 to 0.18, and controlled headroom. "
         "Examples: prompt 'clap' -> engine snare, waveform square or noise-like, "
         "duration 0.12, attack 0.001, decay 0.12, sustain 0, release 0.04, "
         "noise_mix 0.8, filter_mode highpass, filter_cutoff 2500, transient_level "
@@ -134,13 +155,14 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "closed_hat, short duration, high noise_mix, highpass filtering, metallic "
         "tone. Prompt 'wide detuned Am9 pluck' -> engine pluck, chord Am9, saw "
         "or triangle oscillators, oscillator_unison 4, oscillator_detune 14, "
-        "short attack, musical decay. Prompt 'upright piano Fm9 soft but harmonic' "
-        "-> engine keys, chord Fm9, sine or triangle, duration 1.4, amplitude "
-        "0.45, attack 0.008, decay 1.6, sustain 0.08, release 0.45, filter_mode "
-        "lowpass, filter_cutoff 5200, drive 0, oscillator_unison 1, "
-        "oscillator_detune 0, transient_level 0.18, transient_tone 2600, "
+        "oscillator_shape 0.25, short attack, musical decay. Prompt 'upright "
+        "piano Fm9 soft but harmonic' -> engine keys, chord Fm9, sine or triangle, "
+        "duration 1.4, amplitude 0.45, attack 0.008, decay 1.6, sustain 0.08, "
+        "release 0.45, filter_mode lowpass, filter_cutoff 5200, drive 0, "
+        "oscillator_unison 1, oscillator_detune 0, oscillator_shape 0.12, "
+        "pulse_width 0.5, transient_level 0.18, transient_tone 2600, "
         "body_level 0.28, body_decay 1.6, character 0.45, drift 0.16, "
-        "smear 0.35, space 0.22."
+        "smear 0.35, space 0.22, chorus 0.08, output_headroom 0.86."
     )
     model_name = model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     url = os.getenv("OLLAMA_URL", OLLAMA_URL)
@@ -151,7 +173,7 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "model": model_name,
         "prompt": f"{system}\n\nSound prompt: {prompt}",
         "stream": False,
-        "format": "json",
+        "format": PATCH_SCHEMA,
         "keep_alive": keep_alive,
         "options": {"temperature": 0.1, "num_predict": num_predict},
     }
@@ -252,6 +274,8 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         osc2_fine=_float_value(patch_data, "osc2_fine"),
         oscillator_unison=_int_value(patch_data, "oscillator_unison"),
         oscillator_detune=_float_value(patch_data, "oscillator_detune"),
+        oscillator_shape=_float_value(patch_data, "oscillator_shape"),
+        pulse_width=_float_value(patch_data, "pulse_width"),
         noise_type=patch_data["noise_type"],
         noise_decay=_float_value(patch_data, "noise_decay"),
         filter_resonance=_float_value(patch_data, "filter_resonance"),
@@ -267,6 +291,11 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         drift=_float_value(patch_data, "drift"),
         smear=_float_value(patch_data, "smear"),
         space=_float_value(patch_data, "space"),
+        chorus=_float_value(patch_data, "chorus"),
+        tremolo_rate=_float_value(patch_data, "tremolo_rate"),
+        tremolo_depth=_float_value(patch_data, "tremolo_depth"),
+        output_gain=_float_value(patch_data, "output_gain"),
+        output_headroom=_float_value(patch_data, "output_headroom"),
         description=str(patch_data["description"]),
     )
 
@@ -294,6 +323,7 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             drift=_clamp(patch.drift, 0.02, 0.22),
             smear=_clamp(patch.smear, 0.0, 0.2),
             space=_clamp(patch.space, 0.0, 0.18),
+            output_headroom=_clamp(patch.output_headroom, 0.78, 0.92),
         )
     if patch.engine == "percussion":
         return replace(
@@ -317,6 +347,7 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             drift=_clamp(patch.drift, 0.12, 0.55),
             smear=_clamp(patch.smear, 0.08, 0.45),
             space=_clamp(patch.space, 0.03, 0.35),
+            output_headroom=_clamp(patch.output_headroom, 0.78, 0.92),
         )
     if patch.engine in {"closed_hat", "open_hat"}:
         return replace(
@@ -344,6 +375,7 @@ def _polish_patch(patch: SynthPatch) -> SynthPatch:
             drift=_clamp(patch.drift, 0.05, 0.35),
             smear=_clamp(patch.smear, 0.03, 0.35),
             space=_clamp(patch.space, 0.04, 0.45),
+            output_headroom=_clamp(patch.output_headroom, 0.78, 0.92),
         )
     return patch
 
@@ -387,10 +419,13 @@ def _normalize_engine(engine: str) -> str:
         "piano": "keys",
         "upright": "keys",
         "upright_piano": "keys",
+        "rhodes": "keys",
+        "wurlitzer": "keys",
         "electric_piano": "keys",
         "epiano": "keys",
         "keyboard": "keys",
         "key": "keys",
+        "juno": "texture",
         "mallet": "pluck",
         "kalimba": "pluck",
         "pad": "texture",
