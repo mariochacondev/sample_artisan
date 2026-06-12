@@ -81,6 +81,8 @@ class SynthPatch:
     osc2_fine: float = 0.0
     oscillator_unison: int = 1
     oscillator_detune: float = 0.0
+    oscillator_shape: float = 0.0
+    pulse_width: float = 0.5
     noise_type: str = "white"
     noise_decay: float = 0.08
     filter_resonance: float = 0.0
@@ -96,6 +98,11 @@ class SynthPatch:
     drift: float = 0.0
     smear: float = 0.0
     space: float = 0.0
+    chorus: float = 0.0
+    tremolo_rate: float = 0.0
+    tremolo_depth: float = 0.0
+    output_gain: float = 1.0
+    output_headroom: float = 0.92
 
 
 @dataclass(frozen=True)
@@ -103,6 +110,8 @@ class OscillatorSpec:
     waveform: str
     frequency: float
     level: float
+    pulse_width: float = 0.5
+    shape: float = 0.0
 
 
 def generate_wave_sample(
@@ -138,6 +147,8 @@ def generate_wave_sample(
     osc2_fine: float = 0.0,
     oscillator_unison: int = 1,
     oscillator_detune: float = 0.0,
+    oscillator_shape: float = 0.0,
+    pulse_width: float = 0.5,
     noise_type: str = "white",
     noise_decay: float = 0.08,
     filter_resonance: float = 0.0,
@@ -153,6 +164,11 @@ def generate_wave_sample(
     drift: float = 0.0,
     smear: float = 0.0,
     space: float = 0.0,
+    chorus: float = 0.0,
+    tremolo_rate: float = 0.0,
+    tremolo_depth: float = 0.0,
+    output_gain: float = 1.0,
+    output_headroom: float = 0.92,
 ) -> bytes:
     """Generate a mono 16-bit PCM WAV sample."""
     patch = SynthPatch(
@@ -186,6 +202,8 @@ def generate_wave_sample(
         osc2_fine=osc2_fine,
         oscillator_unison=oscillator_unison,
         oscillator_detune=oscillator_detune,
+        oscillator_shape=oscillator_shape,
+        pulse_width=pulse_width,
         noise_type=noise_type,
         noise_decay=noise_decay,
         filter_resonance=filter_resonance,
@@ -201,6 +219,11 @@ def generate_wave_sample(
         drift=drift,
         smear=smear,
         space=space,
+        chorus=chorus,
+        tremolo_rate=tremolo_rate,
+        tremolo_depth=tremolo_depth,
+        output_gain=output_gain,
+        output_headroom=output_headroom,
     )
     return render_patch(patch, sample_rate=sample_rate)
 
@@ -243,9 +266,12 @@ def render_patch(patch: SynthPatch, sample_rate: int = DEFAULT_SAMPLE_RATE) -> b
         values.append(mixed * patch.amplitude)
 
     values = _apply_filter(values, patch, sample_rate)
+    values = _apply_tremolo(values, patch, sample_rate)
+    values = _apply_chorus(values, patch, sample_rate)
     values = _apply_space(values, patch, sample_rate)
     values = _apply_edge_fades(values, sample_rate)
-    values = _apply_output_headroom(values)
+    values = _apply_output_gain(values, patch.output_gain)
+    values = _apply_output_headroom(values, patch.output_headroom)
     frames = bytearray()
     for value in values:
         sample = int(_clamp(value, -1.0, 1.0) * 32767)
@@ -334,6 +360,8 @@ def _oscillator_stack_value(patch: SynthPatch, frequency: float, t: float) -> fl
 
 
 def _oscillator_specs(patch: SynthPatch, frequency: float) -> tuple[OscillatorSpec, ...]:
+    pulse_width = _clamp(patch.pulse_width, 0.05, 0.95)
+    shape = _clamp(patch.oscillator_shape, 0.0, 1.0)
     specs: list[OscillatorSpec] = []
     specs.extend(
         _unison_specs(
@@ -344,6 +372,8 @@ def _oscillator_specs(patch: SynthPatch, frequency: float) -> tuple[OscillatorSp
             level=_clamp(patch.osc1_level, 0.0, 1.0),
             unison=patch.oscillator_unison,
             detune=patch.oscillator_detune,
+            pulse_width=pulse_width,
+            shape=shape,
         )
     )
     specs.extend(
@@ -358,19 +388,44 @@ def _oscillator_specs(patch: SynthPatch, frequency: float) -> tuple[OscillatorSp
             level=_clamp(patch.osc2_level, 0.0, 1.0),
             unison=patch.oscillator_unison,
             detune=patch.oscillator_detune,
+            pulse_width=pulse_width,
+            shape=shape,
         )
     )
     return tuple(specs)
 
 
 def _unison_specs(
-    *, waveform: str, frequency: float, level: float, unison: int, detune: float
+    *,
+    waveform: str,
+    frequency: float,
+    level: float,
+    unison: int,
+    detune: float,
+    pulse_width: float,
+    shape: float,
 ) -> tuple[OscillatorSpec, ...]:
     voice_count = max(1, min(8, int(unison)))
     if level <= 0:
-        return (OscillatorSpec(waveform=waveform, frequency=frequency, level=0.0),)
+        return (
+            OscillatorSpec(
+                waveform=waveform,
+                frequency=frequency,
+                level=0.0,
+                pulse_width=pulse_width,
+                shape=shape,
+            ),
+        )
     if voice_count == 1 or detune <= 0:
-        return (OscillatorSpec(waveform=waveform, frequency=frequency, level=level),)
+        return (
+            OscillatorSpec(
+                waveform=waveform,
+                frequency=frequency,
+                level=level,
+                pulse_width=pulse_width,
+                shape=shape,
+            ),
+        )
     voices: list[OscillatorSpec] = []
     voice_level = level / voice_count
     center = (voice_count - 1) / 2
@@ -382,6 +437,8 @@ def _unison_specs(
                 waveform=waveform,
                 frequency=voice_frequency,
                 level=voice_level,
+                pulse_width=pulse_width,
+                shape=shape,
             )
         )
     return tuple(voices)
@@ -394,7 +451,15 @@ def _mix_oscillators(oscillators: tuple[OscillatorSpec, ...], t: float) -> float
     total = 0.0
     for oscillator in oscillators:
         phase = (oscillator.frequency * t) % 1.0
-        total += _wave_value(phase, oscillator.waveform) * oscillator.level
+        total += (
+            _wave_value(
+                phase,
+                oscillator.waveform,
+                oscillator.pulse_width,
+                oscillator.shape,
+            )
+            * oscillator.level
+        )
     return total / total_level
 
 
@@ -416,6 +481,10 @@ def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Rando
         _keys_string_value(patch, oscillator, t) * oscillator.level
         for oscillator in oscillators
     ) / total_level
+    resonator = sum(
+        _keys_resonator_value(patch, oscillator.frequency, t) * oscillator.level
+        for oscillator in oscillators
+    ) / total_level
     excitation = _clamp(total_level, 0.0, 1.0)
 
     hammer_tone = patch.transient_tone if patch.transient_tone > 80 else frequency * 8.0
@@ -424,7 +493,7 @@ def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Rando
     hammer *= patch.transient_level * excitation * math.exp(-t * 95.0 / (1.0 + patch.smear * 1.8))
     soundboard = math.sin(2 * math.pi * frequency * 0.5 * t) * patch.body_level
     soundboard *= excitation * math.exp(-t / max(patch.body_decay, 0.08))
-    return strings + (hammer * 0.18) + (soundboard * 0.18)
+    return strings + (resonator * 0.45) + (hammer * 0.18) + (soundboard * 0.18)
 
 
 def _keys_string_value(patch: SynthPatch, oscillator: OscillatorSpec, t: float) -> float:
@@ -447,6 +516,18 @@ def _keys_string_value(patch: SynthPatch, oscillator: OscillatorSpec, t: float) 
         total += _wave_value((partial_frequency * t) % 1.0, oscillator.waveform) * weight * decay
         total_weight += weight
     return total / max(total_weight, 0.001)
+
+
+def _keys_resonator_value(patch: SynthPatch, frequency: float, t: float) -> float:
+    body_frequency = patch.body_frequency if patch.body_frequency > 35 else frequency * 0.5
+    tine_amount = _clamp(patch.metallic + (patch.character * 0.35), 0.0, 1.0)
+    bell_amount = _clamp((patch.character * 0.5) + (patch.oscillator_shape * 0.4), 0.0, 1.0)
+    body_amount = _clamp(patch.body_level, 0.0, 1.0)
+    decay = max(patch.body_decay, 0.08)
+    tine = math.sin(2 * math.pi * frequency * 2.99 * t) * math.exp(-t / (decay * 0.52))
+    bell = math.sin(2 * math.pi * frequency * 5.04 * t) * math.exp(-t / (decay * 0.33))
+    cabinet = math.sin(2 * math.pi * body_frequency * t) * math.exp(-t / (decay * 1.35))
+    return (tine * tine_amount * 0.32) + (bell * bell_amount * 0.18) + (cabinet * body_amount * 0.5)
 
 
 def _chord_stack_value(
@@ -564,16 +645,31 @@ def _quality_symbol(chord: str) -> str:
     )
 
 
-def _wave_value(phase: float, waveform: str) -> float:
+def _wave_value(
+    phase: float,
+    waveform: str,
+    pulse_width: float = 0.5,
+    shape: float = 0.0,
+) -> float:
+    pulse_width = _clamp(pulse_width, 0.05, 0.95)
+    shape = _clamp(shape, 0.0, 1.0)
     match waveform:
         case "sine":
-            return math.sin(2 * math.pi * phase)
+            base = math.sin(2 * math.pi * phase)
+            shaped = math.tanh(base * (1.0 + shape * 3.0))
+            return (base * (1.0 - shape)) + (shaped * shape)
         case "square":
-            return 1.0 if phase < 0.5 else -1.0
+            base = 1.0 if phase < pulse_width else -1.0
+            rounded = math.tanh(math.sin(2 * math.pi * phase) * (2.0 + shape * 5.0))
+            return (base * (1.0 - shape * 0.4)) + (rounded * shape * 0.4)
         case "saw":
-            return (2.0 * phase) - 1.0
+            base = (2.0 * phase) - 1.0
+            folded = 2.0 * abs(base) - 1.0
+            return (base * (1.0 - shape)) + (folded * shape)
         case "triangle":
-            return 4.0 * abs(phase - 0.5) - 1.0
+            base = 4.0 * abs(phase - 0.5) - 1.0
+            rounded = math.sin(2 * math.pi * (phase + 0.25))
+            return (base * (1.0 - shape)) + (rounded * shape)
         case _:
             raise ValueError(f"unsupported waveform: {waveform}")
 
@@ -690,6 +786,37 @@ def _surface_noise(patch: SynthPatch, t: float, rng: random.Random) -> float:
     return rng.uniform(-amount, amount) * math.exp(-t / max(patch.duration, 0.001))
 
 
+def _apply_tremolo(values: list[float], patch: SynthPatch, sample_rate: int) -> list[float]:
+    depth = _clamp(patch.tremolo_depth, 0.0, 1.0)
+    if depth <= 0 or patch.tremolo_rate <= 0:
+        return values
+    rate = _clamp(patch.tremolo_rate, 0.05, 30.0)
+    tremolo: list[float] = []
+    for index, value in enumerate(values):
+        t = index / sample_rate
+        mod = (1.0 - depth) + depth * (0.5 + 0.5 * math.sin(2 * math.pi * rate * t))
+        tremolo.append(value * mod)
+    return tremolo
+
+
+def _apply_chorus(values: list[float], patch: SynthPatch, sample_rate: int) -> list[float]:
+    amount = _clamp(patch.chorus, 0.0, 1.0)
+    if amount <= 0:
+        return values
+    base_delay = int(sample_rate * (0.006 + amount * 0.006))
+    depth = int(sample_rate * (0.0015 + amount * 0.004))
+    rate = 0.35 + amount * 1.4
+    wet = 0.12 + amount * 0.32
+    dry = 1.0 - (wet * 0.35)
+    chorused: list[float] = []
+    for index, value in enumerate(values):
+        t = index / sample_rate
+        delay = base_delay + int(depth * (0.5 + 0.5 * math.sin(2 * math.pi * rate * t)))
+        delayed = values[index - delay] if index >= delay else 0.0
+        chorused.append((value * dry) + (delayed * wet))
+    return chorused
+
+
 def _apply_space(values: list[float], patch: SynthPatch, sample_rate: int) -> list[float]:
     if patch.space <= 0:
         return values
@@ -748,7 +875,15 @@ def _apply_edge_fades(
     return faded
 
 
+def _apply_output_gain(values: list[float], gain: float) -> list[float]:
+    gain = _clamp(gain, 0.0, 2.0)
+    if gain == 1.0:
+        return values
+    return [value * gain for value in values]
+
+
 def _apply_output_headroom(values: list[float], headroom: float = 0.92) -> list[float]:
+    headroom = _clamp(headroom, 0.1, 1.0)
     peak = max((abs(value) for value in values), default=0.0)
     if peak <= headroom:
         return values
