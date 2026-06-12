@@ -78,6 +78,8 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
                 osc2_fine=_float_param(params, "osc2_fine", 0.0),
                 oscillator_unison=int(_float_param(params, "oscillator_unison", 1)),
                 oscillator_detune=_float_param(params, "oscillator_detune", 0.0),
+                oscillator_shape=_float_param(params, "oscillator_shape", 0.0),
+                pulse_width=_float_param(params, "pulse_width", 0.5),
                 noise_type=_text_param(params, "noise_type", "white"),
                 noise_decay=_float_param(params, "noise_decay", 0.08),
                 filter_resonance=_float_param(params, "filter_resonance", 0.0),
@@ -93,6 +95,11 @@ class SampleArtisanHandler(BaseHTTPRequestHandler):
                 drift=_float_param(params, "drift", 0.0),
                 smear=_float_param(params, "smear", 0.0),
                 space=_float_param(params, "space", 0.0),
+                chorus=_float_param(params, "chorus", 0.0),
+                tremolo_rate=_float_param(params, "tremolo_rate", 0.0),
+                tremolo_depth=_float_param(params, "tremolo_depth", 0.0),
+                output_gain=_float_param(params, "output_gain", 1.0),
+                output_headroom=_float_param(params, "output_headroom", 0.92),
             )
         except ValueError as error:
             self._send_json_error(HTTPStatus.BAD_REQUEST, str(error))
@@ -154,9 +161,10 @@ INDEX_HTML = """<!doctype html>
     .parameters { padding:14px 18px; border-bottom:1px solid var(--line); background:var(--surface); }
     .workspace { display:grid; grid-template-rows:auto minmax(110px, 1fr) auto auto; gap:8px; min-height:230px; min-width:0; padding:12px 18px; }
     .panel-head { display:flex; justify-content:space-between; gap:16px; align-items:end; margin-bottom:10px; }
-    .panel-head button { width:auto; min-width:180px; margin:0; }
+    .panel-actions { display:grid; grid-template-columns:repeat(2, minmax(120px, 1fr)); gap:8px; min-width:280px; }
     .control-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:8px 12px; align-items:end; }
     .prompt-field { grid-column:span 2; }
+    .preset-row { display:grid; grid-template-columns:minmax(180px, 1fr) repeat(3, minmax(92px, auto)); gap:8px; align-items:end; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
     h1 { margin:0 0 4px; font-size:24px; line-height:1.1; letter-spacing:0; }
     p { margin:0; color:var(--muted); line-height:1.35; }
     label { display:block; margin:0 0 4px; color:#30343a; font-size:13px; font-weight:700; }
@@ -167,6 +175,8 @@ INDEX_HTML = """<!doctype html>
     button { height:40px; border:0; border-radius:6px; background:var(--accent); color:#fff; font-weight:800; cursor:pointer; }
     button:hover { background:var(--accent-strong); }
     button:disabled { cursor:wait; opacity:.72; }
+    .secondary { border:1px solid var(--line); background:#fff; color:#30343a; }
+    .secondary:hover { background:#eef3f2; }
     details { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
     summary { color:#30343a; font-size:13px; font-weight:800; cursor:pointer; }
     .value { float:right; color:var(--muted); font-weight:600; }
@@ -178,7 +188,7 @@ INDEX_HTML = """<!doctype html>
     .loader { position:absolute; inset:0; display:none; place-items:center; background:rgba(251,252,253,.78); color:var(--accent-strong); font-size:14px; font-weight:800; z-index:2; }
     .is-loading .loader { display:flex; }
     .patch-details { margin:0; max-height:56px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--muted); padding:7px 9px; font:11px/1.35 ui-monospace, "SFMono-Regular", Consolas, monospace; white-space:pre-wrap; }
-    @media (max-width:780px) { main { grid-template-rows:auto minmax(220px, 1fr); } .parameters, .workspace { padding:12px; } .workspace { grid-template-rows:auto minmax(92px, 1fr) auto auto; gap:7px; min-height:220px; } .panel-head, .topline { align-items:stretch; flex-direction:column; } .panel-head button { width:100%; } .prompt-field { grid-column:1 / -1; } h1 { font-size:22px; } }
+    @media (max-width:780px) { main { grid-template-rows:auto minmax(220px, 1fr); } .parameters, .workspace { padding:12px; } .workspace { grid-template-rows:auto minmax(92px, 1fr) auto auto; gap:7px; min-height:220px; } .panel-head, .topline { align-items:stretch; flex-direction:column; } .panel-actions, .preset-row { grid-template-columns:1fr; min-width:0; } .prompt-field { grid-column:1 / -1; } h1 { font-size:22px; } }
   </style>
 </head>
 <body>
@@ -189,11 +199,20 @@ INDEX_HTML = """<!doctype html>
           <h1>Audio Sample Generator</h1>
           <p>Prompt a sound or shape the patch manually.</p>
         </div>
-        <button id="generate">Generate sample</button>
+        <div class="panel-actions">
+          <button id="generate">Generate sample</button>
+          <button class="secondary" id="savePreset">Save preset</button>
+        </div>
       </div>
       <div class="control-grid" id="mainControls"></div>
       <details open><summary>Oscillators</summary><div class="control-grid" id="oscControls"></div></details>
       <details><summary>Advanced sound design</summary><div class="control-grid" id="advancedControls"></div></details>
+      <div class="preset-row">
+        <select id="historySelect" aria-label="Patch history"></select>
+        <button class="secondary" id="loadPreset">Load</button>
+        <button class="secondary" id="forgetPreset">Forget</button>
+        <button class="secondary" id="clearPresets">Clear</button>
+      </div>
     </section>
     <section class="workspace" aria-label="Waveform workspace">
       <div class="topline"><div><h1>Waveform</h1><p id="status">Ready</p></div><div class="stats"><span id="sampleRate">44.1 kHz</span><span id="channels">Mono</span></div></div>
@@ -204,7 +223,7 @@ INDEX_HTML = """<!doctype html>
   </main>
   <script>
     const fieldDefs = [
-      ["mainControls","prompt","AI prompt","textarea","wide detuned Am9 pluck, gritty bass, dry conga"],
+      ["mainControls","prompt","AI prompt","textarea","wide detuned Am9 pluck, warm Rhodes tremolo, Juno pulse pad"],
       ["mainControls","chord","Chord","text","Am9, Cmaj7, Dm11, G13"],
       ["mainControls","engine","Sound type","select",[["tone","Tone"],["kick","Kick"],["snare","Snare"],["closed_hat","Closed hat"],["open_hat","Open hat / cymbal"],["noise","Noise"],["percussion","Percussion"],["bass","Bass"],["keys","Keys / piano"],["pluck","Pluck"],["texture","Texture"]]],
       ["mainControls","waveform","Osc 1 waveform","select",[["sine","Sine"],["square","Square"],["saw","Saw"],["triangle","Triangle"]]],
@@ -232,6 +251,8 @@ INDEX_HTML = """<!doctype html>
       ["oscControls","osc2Fine","Osc 2 fine","range",[-100,100,1,0,"cents"]],
       ["oscControls","oscillatorUnison","Unison","range",[1,8,1,1,""]],
       ["oscControls","oscillatorDetune","Detune","range",[0,50,1,0,"cents"]],
+      ["oscControls","oscillatorShape","Shape","range",[0,1,0.01,0,"%"]],
+      ["oscControls","pulseWidth","Pulse width","range",[0.05,0.95,0.01,0.5,"%"]],
       ["advancedControls","noiseType","Noise type","select",[["white","White"],["dark","Dark"],["bright","Bright"],["wood","Wood"],["metal","Metal"]]],
       ["advancedControls","noiseDecay","Noise decay","range",[0.005,3,0.005,0.08,"s"]],
       ["advancedControls","filterResonance","Filter resonance","range",[0,1,0.01,0,"%"]],
@@ -246,10 +267,30 @@ INDEX_HTML = """<!doctype html>
       ["advancedControls","character","Character","range",[0,1,0.01,0,"%"]],
       ["advancedControls","drift","Drift","range",[0,1,0.01,0,"%"]],
       ["advancedControls","smear","Smear","range",[0,1,0.01,0,"%"]],
-      ["advancedControls","space","Space","range",[0,1,0.01,0,"%"]]
+      ["advancedControls","space","Space","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","chorus","Chorus","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","tremoloRate","Tremolo rate","range",[0,30,0.1,0,"Hz"]],
+      ["advancedControls","tremoloDepth","Tremolo depth","range",[0,1,0.01,0,"%"]],
+      ["advancedControls","outputGain","Output gain","range",[0,2,0.01,1,"x"]],
+      ["advancedControls","outputHeadroom","Headroom","range",[0.1,1,0.01,0.92,"%"]]
     ];
+    const patchMap = {
+      engine:"engine", waveform:"waveform", frequency:"frequency", duration:"duration", amplitude:"amplitude",
+      attack:"attack", decay:"decay", noise_mix:"noiseMix", filter_cutoff:"filterCutoff", filter_mode:"filterMode",
+      drive:"drive", pitch_drop:"pitchDrop", metallic:"metallic", bit_depth:"bitDepth", chord:"chord",
+      osc1_level:"osc1Level", osc1_octave:"osc1Octave", osc1_semitone:"osc1Semitone", osc1_fine:"osc1Fine",
+      osc2_waveform:"osc2Waveform", osc2_ratio:"osc2Ratio", osc2_level:"osc2Level", osc2_octave:"osc2Octave",
+      osc2_semitone:"osc2Semitone", osc2_fine:"osc2Fine", oscillator_unison:"oscillatorUnison",
+      oscillator_detune:"oscillatorDetune", oscillator_shape:"oscillatorShape", pulse_width:"pulseWidth",
+      noise_type:"noiseType", noise_decay:"noiseDecay", filter_resonance:"filterResonance", filter_env:"filterEnv",
+      pitch_env:"pitchEnv", pitch_decay:"pitchDecay", transient_level:"transientLevel", transient_tone:"transientTone",
+      body_level:"bodyLevel", body_frequency:"bodyFrequency", body_decay:"bodyDecay", character:"character",
+      drift:"drift", smear:"smear", space:"space", chorus:"chorus", tremolo_rate:"tremoloRate",
+      tremolo_depth:"tremoloDepth", output_gain:"outputGain", output_headroom:"outputHeadroom"
+    };
     const labels = {};
     const controls = {};
+    const storageKey = "sample_artisan_patch_history";
 
     function addField([section,id,label,type,config]) {
       const field = document.createElement("div");
@@ -290,6 +331,11 @@ INDEX_HTML = """<!doctype html>
     fieldDefs.forEach(addField);
 
     const generateButton = document.getElementById("generate");
+    const savePresetButton = document.getElementById("savePreset");
+    const loadPresetButton = document.getElementById("loadPreset");
+    const forgetPresetButton = document.getElementById("forgetPreset");
+    const clearPresetsButton = document.getElementById("clearPresets");
+    const historySelect = document.getElementById("historySelect");
     const audio = document.getElementById("audio");
     const canvas = document.getElementById("canvas");
     const waveformPanel = document.querySelector(".waveform");
@@ -322,12 +368,14 @@ INDEX_HTML = """<!doctype html>
         osc1_semitone: controls.osc1Semitone.value, osc1_fine: controls.osc1Fine.value, osc2_waveform: controls.osc2Waveform.value,
         osc2_ratio: controls.osc2Ratio.value, osc2_level: controls.osc2Level.value, osc2_octave: controls.osc2Octave.value,
         osc2_semitone: controls.osc2Semitone.value, osc2_fine: controls.osc2Fine.value, oscillator_unison: controls.oscillatorUnison.value,
-        oscillator_detune: controls.oscillatorDetune.value, noise_type: controls.noiseType.value, noise_decay: controls.noiseDecay.value,
-        filter_resonance: controls.filterResonance.value, filter_env: controls.filterEnv.value,
-        pitch_env: controls.pitchEnv.value, pitch_decay: controls.pitchDecay.value, transient_level: controls.transientLevel.value,
-        transient_tone: controls.transientTone.value, body_level: controls.bodyLevel.value, body_frequency: controls.bodyFrequency.value,
-        body_decay: controls.bodyDecay.value, character: controls.character.value, drift: controls.drift.value,
-        smear: controls.smear.value, space: controls.space.value
+        oscillator_detune: controls.oscillatorDetune.value, oscillator_shape: controls.oscillatorShape.value, pulse_width: controls.pulseWidth.value,
+        noise_type: controls.noiseType.value, noise_decay: controls.noiseDecay.value, filter_resonance: controls.filterResonance.value,
+        filter_env: controls.filterEnv.value, pitch_env: controls.pitchEnv.value, pitch_decay: controls.pitchDecay.value,
+        transient_level: controls.transientLevel.value, transient_tone: controls.transientTone.value,
+        body_level: controls.bodyLevel.value, body_frequency: controls.bodyFrequency.value, body_decay: controls.bodyDecay.value,
+        character: controls.character.value, drift: controls.drift.value, smear: controls.smear.value, space: controls.space.value,
+        chorus: controls.chorus.value, tremolo_rate: controls.tremoloRate.value, tremolo_depth: controls.tremoloDepth.value,
+        output_gain: controls.outputGain.value, output_headroom: controls.outputHeadroom.value
       });
       return `/api/sample.wav?${params.toString()}`;
     }
@@ -376,27 +424,68 @@ INDEX_HTML = """<!doctype html>
         const plan = await response.json();
         applyPlan(plan);
         patchDetails.textContent = JSON.stringify(plan, null, 2);
+        savePatch(plan, prompt || plan.description || plan.engine, false);
         await renderFromControls(plan.description, "Generating sample");
       } catch (error) {
         status.textContent = `AI prompt failed: ${error.message}`;
         setLoading(false);
       }
     }
+    function currentPatch() {
+      const patch = { description: controls.prompt.value.trim() || "Manual patch" };
+      Object.entries(patchMap).forEach(([key, id]) => {
+        if (controls[id]) patch[key] = controls[id].value;
+      });
+      return patch;
+    }
+    function savePatch(patch = currentPatch(), label = "Manual preset", announce = true) {
+      const history = loadHistory();
+      const item = { label: label.slice(0, 64), patch, savedAt: new Date().toISOString() };
+      history.unshift(item);
+      localStorage.setItem(storageKey, JSON.stringify(history.slice(0, 24)));
+      refreshHistory();
+      if (announce) status.textContent = "Preset saved";
+    }
+    function loadHistory() {
+      try { return JSON.parse(localStorage.getItem(storageKey) || "[]"); }
+      catch { return []; }
+    }
+    function refreshHistory() {
+      const history = loadHistory();
+      historySelect.innerHTML = "";
+      if (!history.length) {
+        historySelect.add(new Option("No saved patches", ""));
+        return;
+      }
+      history.forEach((item, index) => {
+        const label = `${item.label || "Patch"} - ${new Date(item.savedAt).toLocaleTimeString()}`;
+        historySelect.add(new Option(label, String(index)));
+      });
+    }
+    function loadSelectedPatch() {
+      const history = loadHistory();
+      const item = history[Number(historySelect.value)];
+      if (!item) return;
+      applyPlan(item.patch);
+      patchDetails.textContent = JSON.stringify(item.patch, null, 2);
+      renderFromControls(item.patch.description || item.label || "Saved patch");
+    }
+    function forgetSelectedPatch() {
+      const history = loadHistory();
+      const index = Number(historySelect.value);
+      if (!history[index]) return;
+      history.splice(index, 1);
+      localStorage.setItem(storageKey, JSON.stringify(history));
+      refreshHistory();
+      status.textContent = "Preset removed";
+    }
+    function clearPatches() {
+      localStorage.removeItem(storageKey);
+      refreshHistory();
+      status.textContent = "Preset history cleared";
+    }
     function applyPlan(plan) {
-      const map = {
-        engine:"engine", waveform:"waveform", frequency:"frequency", duration:"duration", amplitude:"amplitude",
-        attack:"attack", decay:"decay", noise_mix:"noiseMix", filter_cutoff:"filterCutoff", filter_mode:"filterMode",
-        drive:"drive", pitch_drop:"pitchDrop", metallic:"metallic", bit_depth:"bitDepth", chord:"chord",
-        osc1_level:"osc1Level", osc1_octave:"osc1Octave", osc1_semitone:"osc1Semitone", osc1_fine:"osc1Fine",
-        osc2_waveform:"osc2Waveform", osc2_ratio:"osc2Ratio", osc2_level:"osc2Level", osc2_octave:"osc2Octave",
-        osc2_semitone:"osc2Semitone", osc2_fine:"osc2Fine", oscillator_unison:"oscillatorUnison",
-        oscillator_detune:"oscillatorDetune", noise_type:"noiseType", noise_decay:"noiseDecay",
-        filter_resonance:"filterResonance", filter_env:"filterEnv", pitch_env:"pitchEnv", pitch_decay:"pitchDecay",
-        transient_level:"transientLevel", transient_tone:"transientTone", body_level:"bodyLevel",
-        body_frequency:"bodyFrequency", body_decay:"bodyDecay", character:"character", drift:"drift",
-        smear:"smear", space:"space"
-      };
-      Object.entries(map).forEach(([key, id]) => {
+      Object.entries(patchMap).forEach(([key, id]) => {
         if (plan[key] !== undefined && controls[id]) controls[id].value = plan[key];
       });
       updateLabels();
@@ -440,8 +529,13 @@ INDEX_HTML = """<!doctype html>
     }
     Object.values(controls).forEach((control) => control.addEventListener("input", updateLabels));
     generateButton.addEventListener("click", generate);
+    savePresetButton.addEventListener("click", () => savePatch());
+    loadPresetButton.addEventListener("click", loadSelectedPatch);
+    forgetPresetButton.addEventListener("click", forgetSelectedPatch);
+    clearPresetsButton.addEventListener("click", clearPatches);
     window.addEventListener("resize", drawWaveform);
     updateLabels();
+    refreshHistory();
     generate();
   </script>
 </body>
