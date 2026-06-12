@@ -96,6 +96,13 @@ class SynthPatch:
     space: float = 0.0
 
 
+@dataclass(frozen=True)
+class OscillatorSpec:
+    waveform: str
+    frequency: float
+    level: float
+
+
 def generate_wave_sample(
     *,
     frequency: float = 440.0,
@@ -317,19 +324,40 @@ def _engine_value(
 
 
 def _oscillator_stack_value(patch: SynthPatch, frequency: float, t: float) -> float:
-    osc1_frequency = _tuned_frequency(
-        frequency, patch.osc1_octave, patch.osc1_semitone, patch.osc1_fine
+    return _mix_oscillators(_oscillator_specs(patch, frequency), t)
+
+
+def _oscillator_specs(patch: SynthPatch, frequency: float) -> tuple[OscillatorSpec, OscillatorSpec]:
+    return (
+        OscillatorSpec(
+            waveform=patch.waveform,
+            frequency=_tuned_frequency(
+                frequency, patch.osc1_octave, patch.osc1_semitone, patch.osc1_fine
+            ),
+            level=_clamp(patch.osc1_level, 0.0, 1.0),
+        ),
+        OscillatorSpec(
+            waveform=patch.osc2_waveform,
+            frequency=_tuned_frequency(
+                frequency * max(0.1, patch.osc2_ratio),
+                patch.osc2_octave,
+                patch.osc2_semitone,
+                patch.osc2_fine,
+            ),
+            level=_clamp(patch.osc2_level, 0.0, 1.0),
+        ),
     )
-    osc2_frequency = _tuned_frequency(
-        frequency * max(0.1, patch.osc2_ratio),
-        patch.osc2_octave,
-        patch.osc2_semitone,
-        patch.osc2_fine,
-    )
-    osc1 = _wave_value((osc1_frequency * t) % 1.0, patch.waveform) * patch.osc1_level
-    osc2 = _wave_value((osc2_frequency * t) % 1.0, patch.osc2_waveform) * patch.osc2_level
-    total_level = max(0.001, patch.osc1_level + patch.osc2_level)
-    return (osc1 + osc2) / total_level
+
+
+def _mix_oscillators(oscillators: tuple[OscillatorSpec, ...], t: float) -> float:
+    total_level = sum(oscillator.level for oscillator in oscillators)
+    if total_level <= 0:
+        return 0.0
+    total = 0.0
+    for oscillator in oscillators:
+        phase = (oscillator.frequency * t) % 1.0
+        total += _wave_value(phase, oscillator.waveform) * oscillator.level
+    return total / total_level
 
 
 def _source_level(patch: SynthPatch) -> float:
@@ -341,24 +369,15 @@ def _source_excitation(patch: SynthPatch) -> float:
 
 
 def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Random) -> float:
-    osc1_level = _clamp(patch.osc1_level, 0.0, 1.0)
-    osc2_level = _clamp(patch.osc2_level, 0.0, 1.0)
-    total_level = osc1_level + osc2_level
+    oscillators = _oscillator_specs(patch, frequency)
+    total_level = sum(oscillator.level for oscillator in oscillators)
     if total_level <= 0:
         return 0.0
 
-    osc1_frequency = _tuned_frequency(
-        frequency, patch.osc1_octave, patch.osc1_semitone, patch.osc1_fine
-    )
-    osc2_frequency = _tuned_frequency(
-        frequency * max(0.1, patch.osc2_ratio),
-        patch.osc2_octave,
-        patch.osc2_semitone,
-        patch.osc2_fine,
-    )
-    osc1 = _keys_string_value(patch, osc1_frequency, t, patch.waveform)
-    osc2 = _keys_string_value(patch, osc2_frequency, t, patch.osc2_waveform)
-    strings = ((osc1 * osc1_level) + (osc2 * osc2_level)) / total_level
+    strings = sum(
+        _keys_string_value(patch, oscillator, t) * oscillator.level
+        for oscillator in oscillators
+    ) / total_level
     excitation = _clamp(total_level, 0.0, 1.0)
 
     hammer_tone = patch.transient_tone if patch.transient_tone > 80 else frequency * 8.0
@@ -370,7 +389,7 @@ def _keys_value(patch: SynthPatch, frequency: float, t: float, rng: random.Rando
     return strings + (hammer * 0.18) + (soundboard * 0.18)
 
 
-def _keys_string_value(patch: SynthPatch, frequency: float, t: float, waveform: str) -> float:
+def _keys_string_value(patch: SynthPatch, oscillator: OscillatorSpec, t: float) -> float:
     brightness = _clamp(0.22 + (patch.character * 0.55) + (patch.metallic * 0.25), 0.05, 1.0)
     damping = 1.0 + (patch.smear * 1.8)
     partials = (
@@ -385,9 +404,9 @@ def _keys_string_value(patch: SynthPatch, frequency: float, t: float, waveform: 
     total_weight = 0.0
     for ratio, weight, decay_rate in partials:
         inharmonicity = 1.0 + (patch.character * ratio * ratio * 0.0008)
-        partial_frequency = frequency * ratio * inharmonicity
+        partial_frequency = oscillator.frequency * ratio * inharmonicity
         decay = math.exp(-t * decay_rate / damping)
-        total += _wave_value((partial_frequency * t) % 1.0, waveform) * weight * decay
+        total += _wave_value((partial_frequency * t) % 1.0, oscillator.waveform) * weight * decay
         total_weight += weight
     return total / max(total_weight, 0.001)
 
