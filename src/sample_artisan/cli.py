@@ -129,6 +129,48 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.0,
         help="Unison detune amount in cents.",
     )
+    parser.add_argument(
+        "--oscillator-shape",
+        type=float,
+        default=0.0,
+        help="Oscillator shape morph amount between 0 and 1.",
+    )
+    parser.add_argument(
+        "--pulse-width",
+        type=float,
+        default=0.5,
+        help="Pulse width for square waves, between 0.05 and 0.95.",
+    )
+    parser.add_argument(
+        "--chorus",
+        type=float,
+        default=0.0,
+        help="Chorus amount between 0 and 1.",
+    )
+    parser.add_argument(
+        "--tremolo-rate",
+        type=float,
+        default=0.0,
+        help="Tremolo speed in Hz.",
+    )
+    parser.add_argument(
+        "--tremolo-depth",
+        type=float,
+        default=0.0,
+        help="Tremolo depth between 0 and 1.",
+    )
+    parser.add_argument(
+        "--output-gain",
+        type=float,
+        default=1.0,
+        help="Final gain multiplier, clamped between 0 and 2.",
+    )
+    parser.add_argument(
+        "--output-headroom",
+        type=float,
+        default=0.92,
+        help="Peak output ceiling between 0.1 and 1.",
+    )
     return parser
 
 
@@ -162,6 +204,13 @@ def main() -> None:
         osc2_fine=args.osc2_fine,
         oscillator_unison=args.oscillator_unison,
         oscillator_detune=args.oscillator_detune,
+        oscillator_shape=args.oscillator_shape,
+        pulse_width=args.pulse_width,
+        chorus=args.chorus,
+        tremolo_rate=args.tremolo_rate,
+        tremolo_depth=args.tremolo_depth,
+        output_gain=args.output_gain,
+        output_headroom=args.output_headroom,
     )
     output_path = Path(args.output)
     output_path.write_bytes(sample)
