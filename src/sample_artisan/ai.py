@@ -52,6 +52,8 @@ PATCH_SCHEMA = {
         "osc2_octave": {"type": "integer", "minimum": -4, "maximum": 4},
         "osc2_semitone": {"type": "integer", "minimum": -24, "maximum": 24},
         "osc2_fine": {"type": "number", "minimum": -100, "maximum": 100},
+        "oscillator_unison": {"type": "integer", "minimum": 1, "maximum": 8},
+        "oscillator_detune": {"type": "number", "minimum": 0, "maximum": 50},
         "noise_type": {"type": "string", "enum": list(NOISE_TYPES)},
         "noise_decay": {"type": "number", "minimum": 0.005, "maximum": 3},
         "filter_resonance": {"type": "number", "minimum": 0, "maximum": 1},
@@ -99,13 +101,19 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "amplitude, attack, decay, sustain, release, noise_mix, filter_cutoff, "
         "filter_mode, drive, pitch_drop, metallic, bit_depth, chord, osc1_level, "
         "osc1_octave, osc1_semitone, osc1_fine, osc2_waveform, osc2_ratio, "
-        "osc2_level, osc2_octave, osc2_semitone, osc2_fine, noise_type, "
-        "noise_decay, filter_resonance, filter_env, pitch_env, pitch_decay, "
-        "transient_level, transient_tone, body_level, body_frequency, body_decay, "
-        "character, drift, smear, space, description. "
+        "osc2_level, osc2_octave, osc2_semitone, osc2_fine, oscillator_unison, "
+        "oscillator_detune, noise_type, noise_decay, filter_resonance, filter_env, "
+        "pitch_env, pitch_decay, transient_level, transient_tone, body_level, "
+        "body_frequency, body_decay, character, drift, smear, space, description. "
         "All time values are seconds, not milliseconds. Good one-shot durations "
         "are usually 0.03 to 1.5. Do not output huge values like 100 or 200 for "
         "decay, release, noise_decay, pitch_decay, or body_decay. "
+        "Use oscillator_unison for thicker synths, supersaws, wide plucks, pads, "
+        "and rich chord stabs. Use 1 for clean/simple/realistic sounds, 2 to 4 "
+        "for mild width, and 5 to 8 for dense supersaw-like stacks. Use "
+        "oscillator_detune in cents: 0 for clean sounds, 4 to 12 for subtle "
+        "movement, 12 to 25 for wide synths, and avoid high detune for realistic "
+        "piano unless the user asks for chorus or detuned character. "
         "Use chord only for real chord symbols requested by the user, such as "
         "Am9, Cmaj7, Dm11, or G13. For drums, claps, snares, hats, cymbals, "
         "percussion, bass hits, single notes, or textures, set chord to an empty "
@@ -115,21 +123,24 @@ def plan_sample_with_ollama(prompt: str, model: str | None = None) -> SynthPatch
         "below 0.08, metallic below 0.25, lowpass filtering around 3000 to 9000, "
         "attack 0.002 to 0.02, decay 0.7 to 2.8, sustain 0 to 0.25, release "
         "0.15 to 0.8, transient_level 0.08 to 0.35, body_level 0.12 to 0.45, "
-        "character for harmonics, drift for natural tuning, smear for softer felt, "
-        "and space for room. Softer piano should reduce filter_cutoff and transient; "
-        "more impact should add character/body, not clipping or high drive. "
+        "oscillator_unison 1 to 2, oscillator_detune 0 to 5, character for "
+        "harmonics, drift for natural tuning, smear for softer felt, and space "
+        "for room. Softer piano should reduce filter_cutoff and transient; more "
+        "impact should add character/body, not clipping or high drive. "
         "Examples: prompt 'clap' -> engine snare, waveform square or noise-like, "
         "duration 0.12, attack 0.001, decay 0.12, sustain 0, release 0.04, "
         "noise_mix 0.8, filter_mode highpass, filter_cutoff 2500, transient_level "
         "0.6, transient_tone 3500, chord empty. Prompt 'closed hihat' -> engine "
         "closed_hat, short duration, high noise_mix, highpass filtering, metallic "
         "tone. Prompt 'wide detuned Am9 pluck' -> engine pluck, chord Am9, saw "
-        "or triangle oscillators, short attack, musical decay. Prompt 'upright "
-        "piano Fm9 soft but harmonic' -> engine keys, chord Fm9, sine or triangle, "
-        "duration 1.4, amplitude 0.45, attack 0.008, decay 1.6, sustain 0.08, "
-        "release 0.45, filter_mode lowpass, filter_cutoff 5200, drive 0, "
-        "transient_level 0.18, transient_tone 2600, body_level 0.28, "
-        "body_decay 1.6, character 0.45, drift 0.16, smear 0.35, space 0.22."
+        "or triangle oscillators, oscillator_unison 4, oscillator_detune 14, "
+        "short attack, musical decay. Prompt 'upright piano Fm9 soft but harmonic' "
+        "-> engine keys, chord Fm9, sine or triangle, duration 1.4, amplitude "
+        "0.45, attack 0.008, decay 1.6, sustain 0.08, release 0.45, filter_mode "
+        "lowpass, filter_cutoff 5200, drive 0, oscillator_unison 1, "
+        "oscillator_detune 0, transient_level 0.18, transient_tone 2600, "
+        "body_level 0.28, body_decay 1.6, character 0.45, drift 0.16, "
+        "smear 0.35, space 0.22."
     )
     model_name = model or os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     url = os.getenv("OLLAMA_URL", OLLAMA_URL)
@@ -239,6 +250,8 @@ def _parse_patch(raw_text: str) -> SynthPatch:
         osc2_octave=_int_value(patch_data, "osc2_octave"),
         osc2_semitone=_int_value(patch_data, "osc2_semitone"),
         osc2_fine=_float_value(patch_data, "osc2_fine"),
+        oscillator_unison=_int_value(patch_data, "oscillator_unison"),
+        oscillator_detune=_float_value(patch_data, "oscillator_detune"),
         noise_type=patch_data["noise_type"],
         noise_decay=_float_value(patch_data, "noise_decay"),
         filter_resonance=_float_value(patch_data, "filter_resonance"),
