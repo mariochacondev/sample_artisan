@@ -79,6 +79,8 @@ class SynthPatch:
     osc2_octave: int = 0
     osc2_semitone: int = 0
     osc2_fine: float = 0.0
+    oscillator_unison: int = 1
+    oscillator_detune: float = 0.0
     noise_type: str = "white"
     noise_decay: float = 0.08
     filter_resonance: float = 0.0
@@ -134,6 +136,8 @@ def generate_wave_sample(
     osc2_octave: int = 0,
     osc2_semitone: int = 0,
     osc2_fine: float = 0.0,
+    oscillator_unison: int = 1,
+    oscillator_detune: float = 0.0,
     noise_type: str = "white",
     noise_decay: float = 0.08,
     filter_resonance: float = 0.0,
@@ -180,6 +184,8 @@ def generate_wave_sample(
         osc2_octave=osc2_octave,
         osc2_semitone=osc2_semitone,
         osc2_fine=osc2_fine,
+        oscillator_unison=oscillator_unison,
+        oscillator_detune=oscillator_detune,
         noise_type=noise_type,
         noise_decay=noise_decay,
         filter_resonance=filter_resonance,
@@ -327,16 +333,21 @@ def _oscillator_stack_value(patch: SynthPatch, frequency: float, t: float) -> fl
     return _mix_oscillators(_oscillator_specs(patch, frequency), t)
 
 
-def _oscillator_specs(patch: SynthPatch, frequency: float) -> tuple[OscillatorSpec, OscillatorSpec]:
-    return (
-        OscillatorSpec(
+def _oscillator_specs(patch: SynthPatch, frequency: float) -> tuple[OscillatorSpec, ...]:
+    specs: list[OscillatorSpec] = []
+    specs.extend(
+        _unison_specs(
             waveform=patch.waveform,
             frequency=_tuned_frequency(
                 frequency, patch.osc1_octave, patch.osc1_semitone, patch.osc1_fine
             ),
             level=_clamp(patch.osc1_level, 0.0, 1.0),
-        ),
-        OscillatorSpec(
+            unison=patch.oscillator_unison,
+            detune=patch.oscillator_detune,
+        )
+    )
+    specs.extend(
+        _unison_specs(
             waveform=patch.osc2_waveform,
             frequency=_tuned_frequency(
                 frequency * max(0.1, patch.osc2_ratio),
@@ -345,8 +356,35 @@ def _oscillator_specs(patch: SynthPatch, frequency: float) -> tuple[OscillatorSp
                 patch.osc2_fine,
             ),
             level=_clamp(patch.osc2_level, 0.0, 1.0),
-        ),
+            unison=patch.oscillator_unison,
+            detune=patch.oscillator_detune,
+        )
     )
+    return tuple(specs)
+
+
+def _unison_specs(
+    *, waveform: str, frequency: float, level: float, unison: int, detune: float
+) -> tuple[OscillatorSpec, ...]:
+    voice_count = max(1, min(8, int(unison)))
+    if level <= 0:
+        return (OscillatorSpec(waveform=waveform, frequency=frequency, level=0.0),)
+    if voice_count == 1 or detune <= 0:
+        return (OscillatorSpec(waveform=waveform, frequency=frequency, level=level),)
+    voices: list[OscillatorSpec] = []
+    voice_level = level / voice_count
+    center = (voice_count - 1) / 2
+    for index in range(voice_count):
+        spread = (index - center) / max(center, 1)
+        voice_frequency = frequency * (2 ** ((detune * spread) / 1200.0))
+        voices.append(
+            OscillatorSpec(
+                waveform=waveform,
+                frequency=voice_frequency,
+                level=voice_level,
+            )
+        )
+    return tuple(voices)
 
 
 def _mix_oscillators(oscillators: tuple[OscillatorSpec, ...], t: float) -> float:
